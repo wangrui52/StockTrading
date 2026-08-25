@@ -7,6 +7,7 @@
 | 本机具备基础运行时 | Python/Node/uv/pnpm/Docker 版本输出 | pass | fresh | low |
 | 前后端测试与构建基线可执行 | `evidence/T001-engineering-baseline.md` | pass | fresh | medium |
 | PRD 指标公式已有统一实现 | `evidence/T002-indicator-engine.md` | pass | fresh | medium |
+| PRD 内置信号与风险规则已有统一实现 | `evidence/T003-signal-engine.md` | pass | fresh | medium |
 | 前后端真实进程可启动 | 尚无证据 | unknown | unknown | high |
 | PRD 功能已实现 | 尚无证据 | unknown | unknown | critical |
 | 测试覆盖率达标 | 尚无证据 | unknown | unknown | critical |

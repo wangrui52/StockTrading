@@ -4,8 +4,8 @@
 |---|---|---|---|---|---|
 | T001 工程与测试基线 | done | S1,S3,S4,F1 | C001,C002 | `evidence/T001-engineering-baseline.md` | FastAPI TestClient 第三方弃用警告 |
 | T002 指标引擎 | done | S2,S4,F2,F4 | C002 | `evidence/T002-indicator-engine.md` | 金样本后续扩展 |
-| T003 信号引擎 | in_progress | S2,S4,F2,F4 | C002 | pending | 边界事件 |
-| T004 数据库与 repository | pending | S2,S4,S5,F3 | C001,C003 | pending | 事务模型 |
+| T003 信号引擎 | done | S2,S4,F2,F4 | C002 | `evidence/T003-signal-engine.md` | 真实数据回放待后续 |
+| T004 数据库与 repository | in_progress | S2,S4,S5,F3 | C001,C003 | pending | 事务模型 |
 | T005 数据 adapter 与同步 | pending | S1,S4,F3,F6 | C002,C003 | pending | 外部接口漂移 |
 | T006 P0 REST interface | pending | S1,S2,S3 | C001 | pending | 契约完整性 |
 | T007 前端 P0 页面 | pending | S1,S3,S6,F1 | C001,C002 | pending | 用户体验 |
