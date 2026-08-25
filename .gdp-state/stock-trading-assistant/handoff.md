@@ -4,16 +4,16 @@
 按 PRD V1.1 实现完整前后端、测试和部署基础。
 
 ## 当前 task
-T007 前端 API client 与 P0 页面。
+T008 P1 规则、方案、笔记与设置。
 
 ## 最近证据
-T006 的 17 个 P0 API 路径、统一错误、活动批次上下文和 OpenAPI 快照回归测试通过；后端 39 passed、覆盖率 94%。
+T007 从 OpenAPI 生成前端类型，看板/筛选/详情/自选/提醒/报告页面测试 8 passed，覆盖率 91% statements、76% branches、80% functions，类型检查和构建通过。
 
 ## 未完成事项
 全部生产实现、测试和运行验证。
 
 ## 下一步建议
-从 `backend/openapi.json` 生成前端类型，按 loading/empty/error/stale/success 状态实现看板、详情、筛选、自选、提醒和报告。
+先以契约测试锁定筛选方案唯一名、关注笔记软删除、系统设置重算确认与规则版本查询，再补前端 P1 页面。
 
 ## 已知风险
 真实 AkShare 单股小样本已通过，但全市场吞吐、限流和字段漂移仍需上线前压测；SQLite 不代表 PostgreSQL 并发行为。
