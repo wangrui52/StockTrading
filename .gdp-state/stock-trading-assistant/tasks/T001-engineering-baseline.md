@@ -19,17 +19,16 @@ Git 仓库、backend/frontend 目录、失败后转绿的 health 与 App 测试�
 见实现计划任务 1。
 
 ## 执行记录
-尚未执行。
+已建立 backend/frontend 独立依赖与测试配置。后端和前端测试均先因生产模块缺失出现目标红灯，再用最小实现转绿；前端生产构建已通过。
 
 ## 验证命令
 后端 Pytest、前端 Vitest、格式与类型检查。
 
 ## 验证结果
-pending。
+通过。见 `evidence/T001-engineering-baseline.md`。
 
 ## 遗留风险
-依赖安装可能需要网络。
+FastAPI TestClient 输出第三方弃用警告，当前不影响测试行为；后续升级或切换 ASGI transport 时处理。
 
 ## 下一步
-先写后端失败测试。
-
+执行 T002 指标引擎。
