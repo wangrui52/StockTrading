@@ -10,4 +10,3 @@ def health() -> dict[str, str]:
         "service": "stock-trading-backend",
         "api_version": "v1",
     }
-

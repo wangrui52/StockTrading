@@ -12,4 +12,3 @@ def test_health_endpoint_reports_service_is_ready() -> None:
         "service": "stock-trading-backend",
         "api_version": "v1",
     }
-

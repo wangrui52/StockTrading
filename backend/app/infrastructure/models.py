@@ -32,6 +32,7 @@ class StockBasic(Base):
     stock_name: Mapped[str] = mapped_column(String(64))
     industry: Mapped[str | None] = mapped_column(String(64))
     list_date: Mapped[date | None] = mapped_column(Date)
+    is_st: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
@@ -50,9 +51,16 @@ class SyncJob(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     job_type: Mapped[str] = mapped_column(String(32))
+    target_trade_date: Mapped[date | None] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(16), default="PENDING")
+    stage: Mapped[str] = mapped_column(String(32), default="PENDING")
+    progress: Mapped[float] = mapped_column(Float, default=0.0)
+    completed_count: Mapped[int] = mapped_column(Integer, default=0)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_summary: Mapped[str | None] = mapped_column(Text)
     error_message: Mapped[str | None] = mapped_column(Text)
 
 
@@ -76,9 +84,7 @@ class DataBatch(Base):
 
 class DailyPrice(Base):
     __tablename__ = "daily_price"
-    __table_args__ = (
-        UniqueConstraint("market", "stock_code", "trade_date", "adjustment"),
-    )
+    __table_args__ = (UniqueConstraint("market", "stock_code", "trade_date", "adjustment"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     batch_id: Mapped[int] = mapped_column(ForeignKey("data_batch.id"), index=True)
@@ -93,6 +99,8 @@ class DailyPrice(Base):
     volume: Mapped[int] = mapped_column(Integer)
     amount: Mapped[float] = mapped_column(Float)
     pct_change: Mapped[float | None] = mapped_column(Float)
+    turnover_rate: Mapped[float | None] = mapped_column(Float)
+    is_suspended: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class IndexDaily(Base):
@@ -109,9 +117,7 @@ class IndexDaily(Base):
 
 class DailyIndicator(Base):
     __tablename__ = "daily_indicator"
-    __table_args__ = (
-        UniqueConstraint("market", "stock_code", "trade_date", "rule_version"),
-    )
+    __table_args__ = (UniqueConstraint("market", "stock_code", "trade_date", "rule_version"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     batch_id: Mapped[int] = mapped_column(ForeignKey("data_batch.id"), index=True)
@@ -184,8 +190,13 @@ class AnalysisReport(Base):
     __tablename__ = "analysis_report"
     __table_args__ = (
         UniqueConstraint(
-            "batch_id", "market", "stock_code", "trade_date", "rule_version",
-            "template_version", "report_version",
+            "batch_id",
+            "market",
+            "stock_code",
+            "trade_date",
+            "rule_version",
+            "template_version",
+            "report_version",
         ),
     )
 

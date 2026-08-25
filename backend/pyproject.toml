@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "A 股日线交易辅助决策工具后端"
 requires-python = ">=3.13"
 dependencies = [
+    "akshare>=1.18.94,<2",
     "fastapi>=0.116,<1",
+    "pandas>=2.3,<4",
     "pydantic-settings>=2.10,<3",
     "sqlalchemy>=2.0,<3",
     "uvicorn[standard]>=0.35,<1",
@@ -23,6 +25,7 @@ dev = [
 addopts = "-ra --strict-markers"
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = ["live: 访问真实外部数据源，默认测试不执行"]
 
 [tool.coverage.run]
 branch = true

@@ -45,9 +45,7 @@ class SignalEngine:
             raise ValueError("market bars and indicators must share trade dates")
 
         evaluations: list[SignalEvaluation] = []
-        for index, (current_bar, current) in enumerate(
-            zip(bars, indicators, strict=False)
-        ):
+        for index, (current_bar, current) in enumerate(zip(bars, indicators, strict=False)):
             previous_bar = bars[index - 1] if index > 0 else None
             previous = indicators[index - 1] if index > 0 else None
             state_codes = self._states(bars, index, current_bar, current, previous)

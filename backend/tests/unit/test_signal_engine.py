@@ -35,9 +35,7 @@ def indicator(
     volume_ratio: float | None = 1.0,
 ) -> IndicatorSnapshot:
     unavailable = frozenset(
-        name
-        for name, value in (("ma5", ma5), ("ma20", ma20), ("rsi14", rsi))
-        if value is None
+        name for name, value in (("ma5", ma5), ("ma20", ma20), ("rsi14", rsi)) if value is None
     )
     return IndicatorSnapshot(
         trade_date=date(2025, 1, 1) + timedelta(days=day),
@@ -69,9 +67,7 @@ def test_breakout_is_an_event_only_on_the_crossing_day() -> None:
 
     assert "BREAKOUT_MA20_WITH_VOLUME" in result[1].event_codes
     assert "BREAKOUT_MA20_WITH_VOLUME" not in result[2].event_codes
-    assert {"PRICE_ABOVE_MA20", "MA5_ABOVE_MA20", "VOLUME_EXPANDED"}.issubset(
-        result[2].state_codes
-    )
+    assert {"PRICE_ABOVE_MA20", "MA5_ABOVE_MA20", "VOLUME_EXPANDED"}.issubset(result[2].state_codes)
 
 
 def test_detects_macd_crosses_and_red_histogram_expansion() -> None:
@@ -115,9 +111,7 @@ def test_negative_event_sets_high_risk_even_when_positive_signal_also_exists() -
 
     result = SignalEngine().evaluate(bars, indicators)[-1]
 
-    assert {"FALL_BELOW_MA20", "MACD_GOLDEN_CROSS", "DAILY_DROP"}.issubset(
-        result.event_codes
-    )
+    assert {"FALL_BELOW_MA20", "MACD_GOLDEN_CROSS", "DAILY_DROP"}.issubset(result.event_codes)
     assert result.risk_level is RiskLevel.HIGH
 
 
