@@ -4,6 +4,41 @@
  */
 
 export interface paths {
+    "/api/v1/alert-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Alert Rules */
+        get: operations["list_alert_rules_api_v1_alert_rules_get"];
+        put?: never;
+        /** Create Alert Rule */
+        post: operations["create_alert_rule_api_v1_alert_rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/alert-rules/{logical_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Alert Rule */
+        patch: operations["update_alert_rule_api_v1_alert_rules__logical_id__patch"];
+        trace?: never;
+    };
     "/api/v1/alerts": {
         parameters: {
             query?: never;
@@ -49,6 +84,59 @@ export interface paths {
         get: operations["dashboard_api_v1_dashboard_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/decision-notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Notes */
+        get: operations["list_notes_api_v1_decision_notes_get"];
+        put?: never;
+        /** Create Note */
+        post: operations["create_note_api_v1_decision_notes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/decision-notes/{note_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Note */
+        delete: operations["delete_note_api_v1_decision_notes__note_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Note */
+        patch: operations["update_note_api_v1_decision_notes__note_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/decision-notes/{note_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Note */
+        post: operations["restore_note_api_v1_decision_notes__note_id__restore_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -123,6 +211,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/rule-versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Rule Version */
+        post: operations["create_rule_version_api_v1_rule_versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/screener-presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Presets */
+        get: operations["list_presets_api_v1_screener_presets_get"];
+        put?: never;
+        /** Create Preset */
+        post: operations["create_preset_api_v1_screener_presets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/screenings": {
         parameters: {
             query?: never;
@@ -138,6 +261,24 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings_api_v1_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Settings */
+        patch: operations["update_settings_api_v1_settings_patch"];
         trace?: never;
     };
     "/api/v1/stocks/{market}/{stock_code}": {
@@ -334,6 +475,52 @@ export interface components {
              */
             trade_date: string;
         };
+        /** AlertRuleList */
+        AlertRuleList: {
+            /** Items */
+            items: components["schemas"]["AlertRuleResponse"][];
+        };
+        /** AlertRuleRequest */
+        AlertRuleRequest: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Name */
+            name: string;
+            /** Rule Code */
+            rule_code: string;
+            /** Threshold */
+            threshold: number;
+        };
+        /** AlertRuleResponse */
+        AlertRuleResponse: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Id */
+            id: number;
+            /** Logical Id */
+            logical_id: number;
+            /** Name */
+            name: string;
+            /** Rule Code */
+            rule_code: string;
+            /** Threshold */
+            threshold: number;
+            /** Version */
+            version: number;
+        };
+        /** AlertRuleUpdate */
+        AlertRuleUpdate: {
+            /** Enabled */
+            enabled: boolean;
+            /** Threshold */
+            threshold: number;
+        };
         /** AlertStateResponse */
         AlertStateResponse: {
             /** Confirmed At */
@@ -424,6 +611,93 @@ export interface components {
             /** Up */
             up: number;
         };
+        /** NoteList */
+        NoteList: {
+            /** Items */
+            items: components["schemas"]["NoteResponse"][];
+        };
+        /** NoteRequest */
+        NoteRequest: {
+            /** Content */
+            content: string;
+            /** Market */
+            market: string;
+            /** Stock Code */
+            stock_code: string;
+            /**
+             * Trade Date
+             * Format: date
+             */
+            trade_date: string;
+        };
+        /** NoteResponse */
+        NoteResponse: {
+            /** Content */
+            content: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Deleted At */
+            deleted_at: string | null;
+            /** Id */
+            id: number;
+            /** Market */
+            market: string;
+            /** Stock Code */
+            stock_code: string;
+            /**
+             * Trade Date
+             * Format: date
+             */
+            trade_date: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** NoteUpdate */
+        NoteUpdate: {
+            /** Content */
+            content: string;
+        };
+        /** PresetList */
+        PresetList: {
+            /** Items */
+            items: components["schemas"]["PresetResponse"][];
+        };
+        /** PresetRequest */
+        PresetRequest: {
+            /** Conditions */
+            conditions: {
+                [key: string]: unknown;
+            };
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Name */
+            name: string;
+        };
+        /** PresetResponse */
+        PresetResponse: {
+            /** Conditions */
+            conditions: {
+                [key: string]: unknown;
+            };
+            /** Id */
+            id: number;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Name */
+            name: string;
+        };
         /** PriceItem */
         PriceItem: {
             /** Adjustment */
@@ -495,6 +769,28 @@ export interface components {
              */
             trade_date: string;
         };
+        /** RuleVersionRequest */
+        RuleVersionRequest: {
+            /** Confirm Recalculate */
+            confirm_recalculate: boolean;
+            /** Parameters */
+            parameters: {
+                [key: string]: unknown;
+            };
+        };
+        /** RuleVersionResponse */
+        RuleVersionResponse: {
+            /** Id */
+            id: number;
+            /** Parameters */
+            parameters: {
+                [key: string]: unknown;
+            };
+            /** Requires Recalculation */
+            requires_recalculation: boolean;
+            /** Version */
+            version: string;
+        };
         /** ScreeningRequest */
         ScreeningRequest: {
             /**
@@ -516,6 +812,28 @@ export interface components {
              * Format: date
              */
             trade_date: string;
+        };
+        /** SettingsResponse */
+        SettingsResponse: {
+            /** Adapter Version */
+            adapter_version: string;
+            /** Auto Sync Enabled */
+            auto_sync_enabled: boolean;
+            /** Auto Sync Time */
+            auto_sync_time: string;
+            /** Current Rule Version */
+            current_rule_version: string;
+            /** Indicator Parameters */
+            indicator_parameters: {
+                [key: string]: number;
+            };
+        };
+        /** SettingsUpdate */
+        SettingsUpdate: {
+            /** Auto Sync Enabled */
+            auto_sync_enabled: boolean;
+            /** Auto Sync Time */
+            auto_sync_time: string;
         };
         /** SignalItem */
         SignalItem: {
@@ -658,6 +976,105 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_alert_rules_api_v1_alert_rules_get: {
+        parameters: {
+            query?: {
+                include_history?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertRuleList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_alert_rule_api_v1_alert_rules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertRuleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_alert_rule_api_v1_alert_rules__logical_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                logical_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertRuleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertRuleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     alerts_api_v1_alerts_get: {
         parameters: {
             query?: never;
@@ -725,6 +1142,165 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardResponse"];
+                };
+            };
+        };
+    };
+    list_notes_api_v1_decision_notes_get: {
+        parameters: {
+            query?: {
+                include_deleted?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_note_api_v1_decision_notes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_note_api_v1_decision_notes__note_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                note_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_note_api_v1_decision_notes__note_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                note_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_note_api_v1_decision_notes__note_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                note_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -844,6 +1420,92 @@ export interface operations {
             };
         };
     };
+    create_rule_version_api_v1_rule_versions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_presets_api_v1_screener_presets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresetList"];
+                };
+            };
+        };
+    };
+    create_preset_api_v1_screener_presets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PresetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     screenings_api_v1_screenings_post: {
         parameters: {
             query?: never;
@@ -864,6 +1526,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScreeningResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResponse"];
+                };
+            };
+        };
+    };
+    update_settings_api_v1_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResponse"];
                 };
             };
             /** @description Validation Error */

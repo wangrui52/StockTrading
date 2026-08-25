@@ -12,6 +12,7 @@
 | 同步流水线与 AkShare 标准化可用 | `evidence/T005-sync-pipeline.md` | pass | fresh | medium |
 | P0 REST 契约与 OpenAPI 快照稳定 | `evidence/T006-api-v1.md` | pass | fresh | medium |
 | 前端 P0 工作台与 API 类型消费可用 | `evidence/T007-frontend-p0.md` | pass | fresh | medium |
+| P1 版本化规则、方案、笔记与设置可用 | `evidence/T008-p1-features.md` | pass | fresh | medium |
 | 前后端真实进程可启动 | 尚无证据 | unknown | unknown | high |
 | PRD 功能已实现 | 尚无证据 | unknown | unknown | critical |
 | 测试覆盖率达标 | 尚无证据 | unknown | unknown | critical |

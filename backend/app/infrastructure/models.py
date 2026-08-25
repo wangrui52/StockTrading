@@ -217,16 +217,59 @@ class ScreenerPreset(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(64), unique=True)
     conditions: Mapped[dict[str, Any]] = mapped_column(JSON)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class DecisionNote(Base):
     __tablename__ = "decision_note"
+    __table_args__ = (
+        Index(
+            "uq_active_decision_note",
+            "market",
+            "stock_code",
+            "trade_date",
+            unique=True,
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     market: Mapped[str] = mapped_column(String(8))
     stock_code: Mapped[str] = mapped_column(String(16), index=True)
     trade_date: Mapped[date] = mapped_column(Date)
     content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RuleVersion(Base):
+    __tablename__ = "rule_version"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    version: Mapped[str] = mapped_column(String(32), unique=True)
+    parameters: Mapped[dict[str, Any]] = mapped_column(JSON)
+    requires_recalculation: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
+class AlertRuleVersion(Base):
+    __tablename__ = "alert_rule_version"
+    __table_args__ = (UniqueConstraint("logical_id", "version"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    logical_id: Mapped[int] = mapped_column(Integer, index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    name: Mapped[str] = mapped_column(String(64))
+    rule_code: Mapped[str] = mapped_column(String(64))
+    threshold: Mapped[float] = mapped_column(Float)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )

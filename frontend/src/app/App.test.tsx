@@ -36,6 +36,7 @@ describe('App', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input)
+        if (url.endsWith('/decision-notes')) return Response.json({ items: [] })
         if (url.endsWith('/alerts')) {
           return Response.json({ ...dashboard, items: [] })
         }
@@ -166,5 +167,31 @@ describe('App', () => {
     await user.click(await screen.findByRole('button', { name: '确认提醒' }))
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/alerts/5/confirm', expect.objectContaining({ method: 'POST' }))
     expect(screen.getByText('交易日 2025-03-31')).toBeInTheDocument()
+  })
+
+  it('updates P1 schedule and creates a confirmed rule version', async () => {
+    const settings = { auto_sync_enabled: true, auto_sync_time: '18:30', adapter_version: 'akshare-1.18.94', current_rule_version: 'v1', indicator_parameters: { rsi_period: 14, boll_period: 20 } }
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/settings')) return Response.json(init?.method === 'PATCH' ? { ...settings, auto_sync_enabled: false, auto_sync_time: '19:00' } : settings)
+      if (url.endsWith('/alert-rules')) return Response.json({ items: [] })
+      if (url.endsWith('/rule-versions')) return Response.json({ id: 1, version: 'v2', parameters: { rsi_period: 12 }, requires_recalculation: true })
+      return Response.json(dashboard)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('link', { name: '系统设置' }))
+    expect(await screen.findByText('数据源 akshare-1.18.94')).toBeInTheDocument()
+    await user.click(screen.getByLabelText('启用交易日自动同步'))
+    await user.clear(screen.getByLabelText('执行时间'))
+    await user.type(screen.getByLabelText('执行时间'), '19:00')
+    await user.click(screen.getByRole('button', { name: '保存同步设置' }))
+    expect(await screen.findByText('同步设置已保存。')).toBeInTheDocument()
+    await user.clear(screen.getByLabelText('RSI 周期'))
+    await user.type(screen.getByLabelText('RSI 周期'), '12')
+    await user.click(screen.getByLabelText('确认触发重算'))
+    await user.click(screen.getByRole('button', { name: '创建规则版本' }))
+    expect(await screen.findByText('新规则版本已创建，等待重算。')).toBeInTheDocument()
   })
 })

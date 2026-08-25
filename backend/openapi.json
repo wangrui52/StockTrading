@@ -78,6 +78,111 @@
         "title": "AlertListResponse",
         "type": "object"
       },
+      "AlertRuleList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AlertRuleResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AlertRuleList",
+        "type": "object"
+      },
+      "AlertRuleRequest": {
+        "properties": {
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "rule_code": {
+            "title": "Rule Code",
+            "type": "string"
+          },
+          "threshold": {
+            "title": "Threshold",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "rule_code",
+          "threshold"
+        ],
+        "title": "AlertRuleRequest",
+        "type": "object"
+      },
+      "AlertRuleResponse": {
+        "properties": {
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "logical_id": {
+            "title": "Logical Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "rule_code": {
+            "title": "Rule Code",
+            "type": "string"
+          },
+          "threshold": {
+            "title": "Threshold",
+            "type": "number"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "rule_code",
+          "threshold",
+          "id",
+          "logical_id",
+          "version"
+        ],
+        "title": "AlertRuleResponse",
+        "type": "object"
+      },
+      "AlertRuleUpdate": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "threshold": {
+            "title": "Threshold",
+            "type": "number"
+          }
+        },
+        "required": [
+          "threshold",
+          "enabled"
+        ],
+        "title": "AlertRuleUpdate",
+        "type": "object"
+      },
       "AlertStateResponse": {
         "properties": {
           "confirmed_at": {
@@ -302,6 +407,199 @@
         "title": "MarketSummary",
         "type": "object"
       },
+      "NoteList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NoteResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "NoteList",
+        "type": "object"
+      },
+      "NoteRequest": {
+        "properties": {
+          "content": {
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "market": {
+            "title": "Market",
+            "type": "string"
+          },
+          "stock_code": {
+            "title": "Stock Code",
+            "type": "string"
+          },
+          "trade_date": {
+            "format": "date",
+            "title": "Trade Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "market",
+          "stock_code",
+          "trade_date",
+          "content"
+        ],
+        "title": "NoteRequest",
+        "type": "object"
+      },
+      "NoteResponse": {
+        "properties": {
+          "content": {
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "market": {
+            "title": "Market",
+            "type": "string"
+          },
+          "stock_code": {
+            "title": "Stock Code",
+            "type": "string"
+          },
+          "trade_date": {
+            "format": "date",
+            "title": "Trade Date",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "market",
+          "stock_code",
+          "trade_date",
+          "content",
+          "id",
+          "created_at",
+          "updated_at",
+          "deleted_at"
+        ],
+        "title": "NoteResponse",
+        "type": "object"
+      },
+      "NoteUpdate": {
+        "properties": {
+          "content": {
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "NoteUpdate",
+        "type": "object"
+      },
+      "PresetList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PresetResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PresetList",
+        "type": "object"
+      },
+      "PresetRequest": {
+        "properties": {
+          "conditions": {
+            "additionalProperties": true,
+            "title": "Conditions",
+            "type": "object"
+          },
+          "is_default": {
+            "default": false,
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "conditions"
+        ],
+        "title": "PresetRequest",
+        "type": "object"
+      },
+      "PresetResponse": {
+        "properties": {
+          "conditions": {
+            "additionalProperties": true,
+            "title": "Conditions",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_default": {
+            "default": false,
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "conditions",
+          "id"
+        ],
+        "title": "PresetResponse",
+        "type": "object"
+      },
       "PriceItem": {
         "properties": {
           "adjustment": {
@@ -479,6 +777,54 @@
         "title": "ReportResponse",
         "type": "object"
       },
+      "RuleVersionRequest": {
+        "properties": {
+          "confirm_recalculate": {
+            "title": "Confirm Recalculate",
+            "type": "boolean"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          }
+        },
+        "required": [
+          "parameters",
+          "confirm_recalculate"
+        ],
+        "title": "RuleVersionRequest",
+        "type": "object"
+      },
+      "RuleVersionResponse": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          },
+          "requires_recalculation": {
+            "title": "Requires Recalculation",
+            "type": "boolean"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "parameters",
+          "requires_recalculation"
+        ],
+        "title": "RuleVersionResponse",
+        "type": "object"
+      },
       "ScreeningRequest": {
         "properties": {
           "minimum_score": {
@@ -520,6 +866,62 @@
           "items"
         ],
         "title": "ScreeningResponse",
+        "type": "object"
+      },
+      "SettingsResponse": {
+        "properties": {
+          "adapter_version": {
+            "title": "Adapter Version",
+            "type": "string"
+          },
+          "auto_sync_enabled": {
+            "title": "Auto Sync Enabled",
+            "type": "boolean"
+          },
+          "auto_sync_time": {
+            "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$",
+            "title": "Auto Sync Time",
+            "type": "string"
+          },
+          "current_rule_version": {
+            "title": "Current Rule Version",
+            "type": "string"
+          },
+          "indicator_parameters": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Indicator Parameters",
+            "type": "object"
+          }
+        },
+        "required": [
+          "auto_sync_enabled",
+          "auto_sync_time",
+          "adapter_version",
+          "current_rule_version",
+          "indicator_parameters"
+        ],
+        "title": "SettingsResponse",
+        "type": "object"
+      },
+      "SettingsUpdate": {
+        "properties": {
+          "auto_sync_enabled": {
+            "title": "Auto Sync Enabled",
+            "type": "boolean"
+          },
+          "auto_sync_time": {
+            "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$",
+            "title": "Auto Sync Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "auto_sync_enabled",
+          "auto_sync_time"
+        ],
+        "title": "SettingsUpdate",
         "type": "object"
       },
       "SignalItem": {
@@ -896,6 +1298,131 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/alert-rules": {
+      "get": {
+        "operationId": "list_alert_rules_api_v1_alert_rules_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_history",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include History",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertRuleList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Alert Rules"
+      },
+      "post": {
+        "operationId": "create_alert_rule_api_v1_alert_rules_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertRuleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Alert Rule"
+      }
+    },
+    "/api/v1/alert-rules/{logical_id}": {
+      "patch": {
+        "operationId": "update_alert_rule_api_v1_alert_rules__logical_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "logical_id",
+            "required": true,
+            "schema": {
+              "title": "Logical Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertRuleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertRuleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Alert Rule"
+      }
+    },
     "/api/v1/alerts": {
       "get": {
         "operationId": "alerts_api_v1_alerts_get",
@@ -969,6 +1496,200 @@
           }
         },
         "summary": "Dashboard"
+      }
+    },
+    "/api/v1/decision-notes": {
+      "get": {
+        "operationId": "list_notes_api_v1_decision_notes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_deleted",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Deleted",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Notes"
+      },
+      "post": {
+        "operationId": "create_note_api_v1_decision_notes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Note"
+      }
+    },
+    "/api/v1/decision-notes/{note_id}": {
+      "delete": {
+        "operationId": "delete_note_api_v1_decision_notes__note_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "title": "Note Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Note"
+      },
+      "patch": {
+        "operationId": "update_note_api_v1_decision_notes__note_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "title": "Note Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Note"
+      }
+    },
+    "/api/v1/decision-notes/{note_id}/restore": {
+      "post": {
+        "operationId": "restore_note_api_v1_decision_notes__note_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "title": "Note Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Note"
       }
     },
     "/api/v1/health": {
@@ -1105,6 +1826,98 @@
         "summary": "Export Report"
       }
     },
+    "/api/v1/rule-versions": {
+      "post": {
+        "operationId": "create_rule_version_api_v1_rule_versions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleVersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Rule Version"
+      }
+    },
+    "/api/v1/screener-presets": {
+      "get": {
+        "operationId": "list_presets_api_v1_screener_presets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresetList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Presets"
+      },
+      "post": {
+        "operationId": "create_preset_api_v1_screener_presets_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Preset"
+      }
+    },
     "/api/v1/screenings": {
       "post": {
         "operationId": "screenings_api_v1_screenings_post",
@@ -1141,6 +1954,60 @@
           }
         },
         "summary": "Screenings"
+      }
+    },
+    "/api/v1/settings": {
+      "get": {
+        "operationId": "get_settings_api_v1_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Settings"
+      },
+      "patch": {
+        "operationId": "update_settings_api_v1_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Settings"
       }
     },
     "/api/v1/stocks/{market}/{stock_code}": {

@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.akshare_market_data import AkShareMarketDataGateway
+from app.api.v1.p1_router import router as p1_router
 from app.api.v1.router import APIError, router
 from app.application.sync_pipeline import SyncPipeline, SyncResult
 from app.infrastructure.database import create_sqlite_session_factory
@@ -23,6 +24,7 @@ def create_app(
         lambda target: SyncPipeline(factory, AkShareMarketDataGateway()).run(target)
     )
     application.include_router(router)
+    application.include_router(p1_router)
 
     @application.exception_handler(APIError)
     def api_error(_request: Request, error: APIError) -> JSONResponse:

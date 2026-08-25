@@ -9,6 +9,9 @@ export type PriceSeries = components['schemas']['PriceSeriesResponse']
 export type IndicatorSeries = components['schemas']['IndicatorSeriesResponse']
 export type SignalSeries = components['schemas']['SignalSeriesResponse']
 export type AlertList = components['schemas']['AlertListResponse']
+export type Settings = components['schemas']['SettingsResponse']
+export type AlertRules = components['schemas']['AlertRuleList']
+export type DecisionNotes = components['schemas']['NoteList']
 
 export class APIError extends Error {
   constructor(

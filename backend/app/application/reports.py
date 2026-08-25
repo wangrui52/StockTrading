@@ -14,7 +14,7 @@ def create_stock_report(
 - 规则版本：{batch.rule_version}
 - 数据完整率：{batch.completeness_rate:.2%}
 
-本报告仅用于日线数据研究，不构成投资建议。
+本工具仅用于个人研究和信息整理，不构成投资建议。历史数据和技术指标不代表未来表现。
 """
     return SQLAlchemyReportStore(session).create_report(
         batch_id=batch.id,

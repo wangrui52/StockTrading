@@ -5,6 +5,7 @@ import { BrowserRouter, NavLink, Route, Routes } from 'react-router-dom'
 import { DashboardPage } from '../features/dashboard/DashboardPage'
 import { ReportsPage } from '../features/reports/ReportsPage'
 import { ScreenerPage } from '../features/screener/ScreenerPage'
+import { SettingsPage } from '../features/settings/SettingsPage'
 import { StockDetailPage } from '../features/stock-detail/StockDetailPage'
 import { WatchlistPage } from '../features/watchlist/WatchlistPage'
 
@@ -36,7 +37,7 @@ function Workspace() {
           <Route path="/watchlist" element={<WatchlistPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/stocks/:market/:code" element={<StockDetailPage />} />
-          <Route path="/settings" element={<section className="panel"><h2>系统设置</h2><p className="muted">同步计划与规则参数将在 P1 中提供。</p></section>} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>
 
