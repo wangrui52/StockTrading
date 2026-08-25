@@ -1,0 +1,15 @@
+# Task Index
+
+| Task | 状态 | 对应 S/F | 约束 | 证据 | 风险 |
+|---|---|---|---|---|---|
+| T001 工程与测试基线 | in_progress | S1,S3,S4,F1 | C001,C002 | pending | 依赖安装 |
+| T002 指标引擎 | pending | S2,S4,F2,F4 | C002 | pending | 数值口径 |
+| T003 信号引擎 | pending | S2,S4,F2,F4 | C002 | pending | 边界事件 |
+| T004 数据库与 repository | pending | S2,S4,S5,F3 | C001,C003 | pending | 事务模型 |
+| T005 数据 adapter 与同步 | pending | S1,S4,F3,F6 | C002,C003 | pending | 外部接口漂移 |
+| T006 P0 REST interface | pending | S1,S2,S3 | C001 | pending | 契约完整性 |
+| T007 前端 P0 页面 | pending | S1,S3,S6,F1 | C001,C002 | pending | 用户体验 |
+| T008 P1 功能 | pending | S1,S2,S6 | C001,C002 | pending | 范围较大 |
+| T009 E2E 本地闭环 | pending | S1,S4,S6,F1,F4 | C002,C003 | pending | 浏览器环境 |
+| T010 部署与最终审计 | pending | S3,S5 | C001,C003,C005 | pending | 容器环境 |
+

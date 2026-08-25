@@ -1,0 +1,13 @@
+# Evidence Matrix
+
+| Claim | Evidence | Status | Freshness | Risk |
+|---|---|---|---|---|
+| PRD V1.1 已存在 | `A股交易辅助决策工具_PRD_V1.1.md` | pass | fresh | low |
+| 技术方案已确认 | ADR-001 与用户确认 | pass | fresh | low |
+| 本机具备基础运行时 | Python/Node/uv/pnpm/Docker 版本输出 | pass | fresh | low |
+| 前后端可启动 | 尚无证据 | unknown | unknown | high |
+| PRD 功能已实现 | 尚无证据 | unknown | unknown | critical |
+| 测试覆盖率达标 | 尚无证据 | unknown | unknown | critical |
+| 本地 E2E 通过 | 尚无证据 | unknown | unknown | critical |
+| 容器部署可用 | 尚无证据 | unknown | unknown | high |
+
