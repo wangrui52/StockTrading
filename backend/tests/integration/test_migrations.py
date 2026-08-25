@@ -23,4 +23,5 @@ def test_alembic_upgrade_creates_core_tables(tmp_path: Path) -> None:
         "signal_event",
         "analysis_report",
         "watchlist_item",
+        "operation_log",
     } <= tables

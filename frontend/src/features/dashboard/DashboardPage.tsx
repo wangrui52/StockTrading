@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
-import { APIError, request, type AlertList, type Dashboard } from '../../shared/api/client'
+import { APIError, request, type AlertList, type Dashboard, type SystemStatus } from '../../shared/api/client'
 
 function isStale(tradeDate: string) {
   const elapsed = Date.now() - new Date(`${tradeDate}T15:00:00+08:00`).getTime()
@@ -14,9 +14,17 @@ export function DashboardPage() {
     queryKey: ['dashboard'],
     queryFn: () => request<Dashboard>('/dashboard'),
   })
+  const systemStatus = useQuery({
+    queryKey: ['system-status'],
+    queryFn: () => request<SystemStatus>('/system/status'),
+    refetchInterval: (query) => {
+      const value = query.state.data?.latest_sync?.status
+      return value && !['READY', 'FAILED'].includes(value) ? 2000 : false
+    },
+  })
   const alerts = useQuery({
     queryKey: ['alerts'],
-    queryFn: () => request<AlertList>('/alerts'),
+    queryFn: () => request<AlertList>('/alerts?limit=10&watchlist_only=true'),
     enabled: dashboard.isSuccess,
   })
   const sync = useMutation({
@@ -25,7 +33,10 @@ export function DashboardPage() {
         method: 'POST',
         body: JSON.stringify({ target_trade_date: new Date().toISOString().slice(0, 10) }),
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      queryClient.invalidateQueries({ queryKey: ['system-status'] })
+    },
   })
   const confirmAlert = useMutation({
     mutationFn: (id: number) => request(`/alerts/${id}/confirm`, { method: 'POST' }),
@@ -58,21 +69,32 @@ export function DashboardPage() {
   }
 
   const data = dashboard.data
+  const indexNames: Record<string, string> = {
+    '000001': '上证指数',
+    '399001': '深证成指',
+    '399006': '创业板指',
+    '899050': '北证 50',
+  }
   return (
     <div className="page-stack">
       <section className="context-strip">
         <strong>交易日 {data.trade_date}</strong>
         {isStale(data.trade_date) && <span className="status-tag warning">历史数据</span>}
+        {data.risk_acknowledged && <span className="status-tag warning">缺失数据风险已确认</span>}
         <span>批次 #{data.batch_id}</span>
         <span>规则 {data.rule_version}</span>
         <span>完整率 {(data.completeness_rate * 100).toFixed(1)}%</span>
       </section>
-      <section className="metric-grid" aria-label="市场概览">
+      {systemStatus.data?.latest_sync && !['READY'].includes(systemStatus.data.latest_sync.status) && <section className={`context-strip ${systemStatus.data.latest_sync.status === 'FAILED' ? 'warning' : ''}`}><strong>同步 {systemStatus.data.latest_sync.status}</strong><span>阶段 {systemStatus.data.latest_sync.stage}</span><span>完成 {systemStatus.data.latest_sync.completed_count} / 失败 {systemStatus.data.latest_sync.failed_count}</span>{systemStatus.data.latest_sync.failed_items.length > 0 && <span>失败股票 {systemStatus.data.latest_sync.failed_items.slice(0, 8).join('、')}</span>}{systemStatus.data.latest_sync.error_summary && <span>{systemStatus.data.latest_sync.error_summary}</span>}</section>}
+      <section className="metric-grid" aria-label="主要指数">
+        {(data.indices ?? []).map((item) => <article key={item.index_code}><span>{indexNames[item.index_code] ?? item.index_code}</span><strong>{item.close.toFixed(2)}</strong><small className={(item.pct_change ?? 0) >= 0 ? 'rise' : 'fall'}>{item.pct_change == null ? '--' : `${item.pct_change.toFixed(2)}%`}</small>{item.trade_date !== data.trade_date && <small className="muted">旧数据 {item.trade_date}</small>}</article>)}
+      </section>
+      {data.market_summary ? <section className="metric-grid" aria-label="市场概览">
         <article><span>上涨</span><strong className="rise">{data.market_summary.up}</strong></article>
         <article><span>下跌</span><strong className="fall">{data.market_summary.down}</strong></article>
         <article><span>平盘</span><strong>{data.market_summary.flat}</strong></article>
         <article><span>成交额</span><strong>{(data.market_summary.amount / 100000000).toFixed(1)} 亿</strong></article>
-      </section>
+      </section> : <section className="state-card"><strong>市场概览已隐藏</strong><p>当前批次完整率低于 99%，避免用不完整样本展示聚合统计。</p></section>}
       <section className="panel">
         <div className="panel-title"><div><p className="eyebrow">默认策略</p><h2>交易日候选股</h2></div><Link to="/screener">调整筛选</Link></div>
         {data.candidates.length === 0 ? <p className="muted">当前批次没有命中默认条件的股票。</p> : (
@@ -82,7 +104,7 @@ export function DashboardPage() {
         )}
       </section>
       <section className="panel">
-        <div className="panel-title"><div><p className="eyebrow">待处理</p><h2>未确认异动</h2></div></div>
+        <div className="panel-title"><div><p className="eyebrow">待处理</p><h2>最近未确认异动</h2></div><small className="muted">最多展示 10 条</small></div>
         {alerts.isPending ? <p className="muted">正在读取提醒…</p> : alerts.data?.items.length ? alerts.data.items.map((item) => <div className="alert-row" key={item.id}><span>{item.stock_code} · {item.rule_code}</span>{item.status !== 'CONFIRMED' && <button type="button" onClick={() => confirmAlert.mutate(item.id)}>确认提醒</button>}</div>) : <p className="muted">暂无未确认异动。</p>}
       </section>
     </div>

@@ -14,6 +14,8 @@ class BatchContext(BaseModel):
     trade_date: date
     batch_id: int
     rule_version: str
+    batch_status: str
+    risk_acknowledged: bool
 
 
 class SyncCreatedResponse(BaseModel):
@@ -21,14 +23,20 @@ class SyncCreatedResponse(BaseModel):
     batch_id: int
 
 
+class BatchActivationResponse(BatchContext):
+    completeness_rate: float
+
+
 class SyncJobResponse(BaseModel):
     id: int
+    batch_id: int | None
     target_trade_date: date | None
     status: str
     stage: str
     progress: float
     completed_count: int
     failed_count: int
+    failed_items: list[str]
     error_summary: str | None
 
 
@@ -42,6 +50,9 @@ class CandidateItem(BaseModel):
     stock_code: str
     score: float
     reasons: list[str]
+    close: float | None = None
+    pct_change: float | None = None
+    rsi14: float | None = None
 
 
 class MarketSummary(BaseModel):
@@ -51,10 +62,18 @@ class MarketSummary(BaseModel):
     amount: float
 
 
+class IndexItem(BaseModel):
+    index_code: str
+    trade_date: date
+    close: float
+    pct_change: float | None
+
+
 class DashboardResponse(BatchContext):
     completeness_rate: float
     candidates: list[CandidateItem]
-    market_summary: MarketSummary
+    market_summary: MarketSummary | None
+    indices: list[IndexItem]
 
 
 class PriceItem(BaseModel):
@@ -68,13 +87,18 @@ class PriceItem(BaseModel):
     amount: float
     pct_change: float | None
     turnover_rate: float | None
+    is_suspended: bool
 
 
 class StockDetailResponse(BatchContext):
     market: str
     stock_code: str
     stock_name: str
+    industry: str | None
     price: PriceItem | None
+    trend: str
+    risk_level: str
+    risk_reasons: list[str]
 
 
 class PriceSeriesResponse(BatchContext):
@@ -100,18 +124,39 @@ class SignalSeriesResponse(BatchContext):
 
 class ScreeningResponse(BatchContext):
     items: list[CandidateItem]
+    total: int
+    page: int
+    page_size: int
 
 
 class WatchlistItemResponse(BaseModel):
     id: int
     group_id: int
+    group_name: str | None = None
     market: str
     stock_code: str
+    stock_name: str | None = None
     note: str | None
+    trade_date: date | None = None
+    close: float | None = None
+    pct_change: float | None = None
+    signal_codes: list[str] = []
+    risk_level: str | None = None
+    alert_status: str = "UNTRIGGERED"
 
 
 class WatchlistResponse(BaseModel):
     items: list[WatchlistItemResponse]
+
+
+class WatchlistGroupItem(BaseModel):
+    id: int
+    name: str
+    sort_order: int
+
+
+class WatchlistGroupResponse(BaseModel):
+    items: list[WatchlistGroupItem]
 
 
 class AlertItem(SignalItem):

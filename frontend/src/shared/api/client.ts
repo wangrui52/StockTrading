@@ -1,8 +1,11 @@
 import type { components } from './schema'
 
 export type Dashboard = components['schemas']['DashboardResponse']
+export type SystemStatus = components['schemas']['SystemStatusResponse']
 export type Screening = components['schemas']['ScreeningResponse']
+export type ScreenerPresets = components['schemas']['PresetList']
 export type Watchlist = components['schemas']['WatchlistResponse']
+export type WatchlistGroups = components['schemas']['WatchlistGroupResponse']
 export type Report = components['schemas']['ReportResponse']
 export type StockDetail = components['schemas']['StockDetailResponse']
 export type PriceSeries = components['schemas']['PriceSeriesResponse']

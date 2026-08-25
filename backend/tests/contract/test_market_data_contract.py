@@ -39,6 +39,19 @@ class FrozenAkShare:
             }
         )
 
+    def stock_zh_index_daily_em(self, **kwargs: str) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "date": [date(2025, 3, 28), date(2025, 3, 31)],
+                "open": [3000.0, 3030.0],
+                "close": [3020.0, 3060.0],
+                "high": [3030.0, 3070.0],
+                "low": [2990.0, 3020.0],
+                "volume": [100, 120],
+                "amount": [1000.0, 1200.0],
+            }
+        )
+
 
 def test_akshare_adapter_normalizes_market_fields_and_units() -> None:
     adapter = AkShareMarketDataGateway(FrozenAkShare())
@@ -57,6 +70,9 @@ def test_akshare_adapter_normalizes_market_fields_and_units() -> None:
     assert records[0].amount == 1_250_000.0
     assert records[0].pct_change == 2.0
     assert records[1].close == 9.8
+    indices = adapter.index_prices(date(2025, 3, 31))
+    assert [item.index_code for item in indices] == ["000001", "399001", "399006", "899050"]
+    assert indices[0].pct_change == pytest.approx(1.3245, rel=1e-3)
 
 
 def test_akshare_errors_are_standardized() -> None:
@@ -69,3 +85,15 @@ def test_akshare_errors_are_standardized() -> None:
 
     with pytest.raises(MarketDataUnavailable, match="600000"):
         adapter.daily_prices(stock, date(2025, 3, 31))
+
+
+def test_akshare_index_adapter_keeps_other_indices_when_one_source_fails() -> None:
+    class PartiallyBrokenAkShare(FrozenAkShare):
+        def stock_zh_index_daily_em(self, **kwargs: str) -> pd.DataFrame:
+            if kwargs["symbol"] == "bj899050":
+                raise TimeoutError("single index timeout")
+            return super().stock_zh_index_daily_em(**kwargs)
+
+    indices = AkShareMarketDataGateway(PartiallyBrokenAkShare()).index_prices(date(2025, 3, 31))
+
+    assert [item.index_code for item in indices] == ["000001", "399001", "399006"]

@@ -1,0 +1,59 @@
+services:
+  backend:
+    build:
+      context: ../backend
+    command: ["sh", "-c", "uv run --no-sync alembic upgrade head && exec uv run --no-sync uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+    environment:
+      DATABASE_URL: sqlite+pysqlite:////data/stock_trading.db
+      TZ: Asia/Shanghai
+    volumes:
+      - stock_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  scheduler:
+    build:
+      context: ../backend
+    command: ["uv", "run", "--no-sync", "python", "-m", "scripts.run_scheduler"]
+    environment:
+      DATABASE_URL: sqlite+pysqlite:////data/stock_trading.db
+      TZ: Asia/Shanghai
+    volumes:
+      - stock_data:/data
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  backup:
+    build:
+      context: ../backend
+    command: ["uv", "run", "--no-sync", "python", "-m", "scripts.run_backup"]
+    environment:
+      DATABASE_PATH: /data/stock_trading.db
+      BACKUP_DIR: /data/backups
+      TZ: Asia/Shanghai
+    volumes:
+      - stock_data:/data
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "127.0.0.1:${APP_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  stock_data:

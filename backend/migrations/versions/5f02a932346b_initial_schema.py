@@ -75,13 +75,16 @@ def upgrade() -> None:
     op.create_table(
         "sync_job",
         sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("batch_id", sa.Integer(), nullable=True),
         sa.Column("job_type", sa.String(length=32), nullable=False),
         sa.Column("status", sa.String(length=16), nullable=False),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
+        sa.ForeignKeyConstraint(["batch_id"], ["data_batch.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
+    op.create_index(op.f("ix_sync_job_batch_id"), "sync_job", ["batch_id"], unique=False)
     op.create_table(
         "system_setting",
         sa.Column("key", sa.String(length=64), nullable=False),
@@ -142,6 +145,9 @@ def upgrade() -> None:
         sa.Column("stock_code", sa.String(length=16), nullable=False),
         sa.Column("score", sa.Float(), nullable=False),
         sa.Column("reasons", sa.JSON(), nullable=False),
+        sa.Column("positive_event_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("volume_ratio", sa.Float(), nullable=True),
+        sa.Column("pct_change", sa.Float(), nullable=True),
         sa.ForeignKeyConstraint(
             ["batch_id"],
             ["data_batch.id"],
@@ -166,7 +172,7 @@ def upgrade() -> None:
             ["data_batch.id"],
         ),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("market", "stock_code", "trade_date", "rule_version"),
+        sa.UniqueConstraint("batch_id", "market", "stock_code", "trade_date", "rule_version"),
     )
     op.create_index(
         op.f("ix_daily_indicator_batch_id"), "daily_indicator", ["batch_id"], unique=False
@@ -191,7 +197,7 @@ def upgrade() -> None:
             ["data_batch.id"],
         ),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("market", "stock_code", "trade_date", "adjustment"),
+        sa.UniqueConstraint("batch_id", "market", "stock_code", "trade_date", "adjustment"),
     )
     op.create_index(op.f("ix_daily_price_batch_id"), "daily_price", ["batch_id"], unique=False)
     op.create_index(op.f("ix_daily_price_stock_code"), "daily_price", ["stock_code"], unique=False)
@@ -209,7 +215,7 @@ def upgrade() -> None:
             ["data_batch.id"],
         ),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("index_code", "trade_date"),
+        sa.UniqueConstraint("batch_id", "index_code", "trade_date"),
     )
     op.create_index(op.f("ix_index_daily_batch_id"), "index_daily", ["batch_id"], unique=False)
     op.create_table(
@@ -245,7 +251,7 @@ def upgrade() -> None:
             ["watchlist_group.id"],
         ),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("group_id", "market", "stock_code"),
+        sa.UniqueConstraint("market", "stock_code"),
     )
     op.create_index(
         op.f("ix_watchlist_item_group_id"), "watchlist_item", ["group_id"], unique=False
@@ -295,6 +301,7 @@ def downgrade() -> None:
     op.drop_table("watchlist_group")
     op.drop_table("trade_calendar")
     op.drop_table("system_setting")
+    op.drop_index(op.f("ix_sync_job_batch_id"), table_name="sync_job")
     op.drop_table("sync_job")
     op.drop_table("stock_basic")
     op.drop_table("screener_preset")

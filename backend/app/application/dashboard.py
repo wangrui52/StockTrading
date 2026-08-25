@@ -4,7 +4,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.infrastructure.models import CandidateResult, DailyPrice, DataBatch, StockBasic
+from app.infrastructure.models import CandidateResult, DailyPrice, DataBatch, IndexDaily, StockBasic
 
 
 def active_batch(session: Session) -> DataBatch | None:
@@ -16,6 +16,8 @@ def context(batch: DataBatch) -> dict[str, Any]:
         "trade_date": batch.trade_date,
         "batch_id": batch.id,
         "rule_version": batch.rule_version,
+        "batch_status": batch.status,
+        "risk_acknowledged": batch.risk_acknowledged,
     }
 
 
@@ -23,9 +25,26 @@ def dashboard_payload(session: Session, batch: DataBatch) -> dict[str, Any]:
     candidates = session.scalars(
         select(CandidateResult)
         .where(CandidateResult.batch_id == batch.id)
-        .order_by(CandidateResult.score.desc(), CandidateResult.stock_code)
+        .order_by(
+            CandidateResult.positive_event_count.desc(),
+            CandidateResult.volume_ratio.desc(),
+            CandidateResult.pct_change.desc(),
+            CandidateResult.stock_code,
+        )
         .limit(20)
     ).all()
+    indices = [
+        item
+        for code in ("000001", "399001", "399006", "899050")
+        if (
+            item := session.scalar(
+                select(IndexDaily)
+                .where(IndexDaily.index_code == code, IndexDaily.trade_date <= batch.trade_date)
+                .order_by(IndexDaily.trade_date.desc(), IndexDaily.id.desc())
+            )
+        )
+        is not None
+    ]
     return {
         **context(batch),
         "completeness_rate": batch.completeness_rate,
@@ -38,7 +57,20 @@ def dashboard_payload(session: Session, batch: DataBatch) -> dict[str, Any]:
             }
             for item in candidates
         ],
-        "market_summary": _market_summary(session, batch.id, batch.trade_date),
+        "market_summary": (
+            _market_summary(session, batch.id, batch.trade_date)
+            if batch.completeness_rate >= 0.99
+            else None
+        ),
+        "indices": [
+            {
+                "index_code": item.index_code,
+                "trade_date": item.trade_date,
+                "close": item.close,
+                "pct_change": item.pct_change,
+            }
+            for item in indices
+        ],
     }
 
 

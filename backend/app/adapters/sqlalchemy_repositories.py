@@ -17,7 +17,7 @@ class SQLAlchemyBatchStore:
 
     def activate_ready_batch(self, batch_id: int) -> DataBatch:
         batch = self.session.get(DataBatch, batch_id)
-        if batch is None or batch.status != "READY":
+        if batch is None or batch.status not in {"READY", "READY_WITH_GAPS"}:
             raise BatchNotReadyError(f"batch {batch_id} is not ready")
         self.session.execute(
             update(DataBatch).where(DataBatch.is_active.is_(True)).values(is_active=False)

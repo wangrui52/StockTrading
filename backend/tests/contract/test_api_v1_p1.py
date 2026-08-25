@@ -43,8 +43,9 @@ def session_factory() -> Generator[sessionmaker[Session]]:
 
 
 @pytest.fixture
-def client(session_factory: sessionmaker[Session]) -> TestClient:
-    return TestClient(create_app(session_factory=session_factory))
+def client(session_factory: sessionmaker[Session]) -> Generator[TestClient]:
+    with TestClient(create_app(session_factory=session_factory)) as value:
+        yield value
 
 
 def test_screener_preset_name_is_unique(client: TestClient) -> None:
@@ -56,6 +57,15 @@ def test_screener_preset_name_is_unique(client: TestClient) -> None:
     assert repeated.status_code == 409
     assert repeated.json()["error"]["code"] == "PRESET_NAME_EXISTS"
     assert client.get("/api/v1/screener-presets").json()["items"][0]["name"] == "我的强势方案"
+    preset_id = first.json()["id"]
+    renamed = client.patch(
+        f"/api/v1/screener-presets/{preset_id}",
+        json={"name": "更新后的方案", "conditions": {"rsi_min": 50}},
+    )
+    assert renamed.json()["conditions"] == {"rsi_min": 50}
+    assert client.post(f"/api/v1/screener-presets/{preset_id}/default").json()["is_default"]
+    assert client.delete(f"/api/v1/screener-presets/{preset_id}").status_code == 204
+    assert client.get("/api/v1/screener-presets").json()["items"] == []
 
 
 def test_decision_note_update_soft_delete_and_restore(client: TestClient) -> None:
@@ -115,6 +125,9 @@ def test_alert_rule_update_creates_new_version(client: TestClient) -> None:
     assert (first.json()["version"], second.json()["version"]) == (1, 2)
     rules = client.get("/api/v1/alert-rules?include_history=true").json()["items"]
     assert [(item["version"], item["threshold"]) for item in rules] == [(1, 80), (2, 75)]
+    deleted = client.delete(f"/api/v1/alert-rules/{first.json()['logical_id']}")
+    assert deleted.json()["version"] == 3
+    assert deleted.json()["enabled"] is False
 
 
 def test_settings_expose_defaults_and_can_update_schedule(client: TestClient) -> None:
@@ -125,5 +138,8 @@ def test_settings_expose_defaults_and_can_update_schedule(client: TestClient) ->
     ).json()
 
     assert defaults["auto_sync_time"] == "18:30"
+    assert defaults["last_successful_batch"] == "2025-03-31"
+    assert defaults["completeness_rate"] == 1
+    assert defaults["failed_jobs"] == []
     assert updated["auto_sync_enabled"] is False
     assert updated["auto_sync_time"] == "19:00"

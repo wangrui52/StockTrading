@@ -50,6 +50,7 @@ class SyncJob(Base):
     __tablename__ = "sync_job"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    batch_id: Mapped[int | None] = mapped_column(ForeignKey("data_batch.id"), index=True)
     job_type: Mapped[str] = mapped_column(String(32))
     target_trade_date: Mapped[date | None] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(16), default="PENDING")
@@ -57,6 +58,7 @@ class SyncJob(Base):
     progress: Mapped[float] = mapped_column(Float, default=0.0)
     completed_count: Mapped[int] = mapped_column(Integer, default=0)
     failed_count: Mapped[int] = mapped_column(Integer, default=0)
+    failed_items: Mapped[list[str]] = mapped_column(JSON, default=list)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -76,6 +78,7 @@ class DataBatch(Base):
     completeness_rate: Mapped[float] = mapped_column(Float, default=0.0)
     rule_version: Mapped[str] = mapped_column(String(32))
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    risk_acknowledged: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
@@ -84,7 +87,9 @@ class DataBatch(Base):
 
 class DailyPrice(Base):
     __tablename__ = "daily_price"
-    __table_args__ = (UniqueConstraint("market", "stock_code", "trade_date", "adjustment"),)
+    __table_args__ = (
+        UniqueConstraint("batch_id", "market", "stock_code", "trade_date", "adjustment"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     batch_id: Mapped[int] = mapped_column(ForeignKey("data_batch.id"), index=True)
@@ -101,23 +106,34 @@ class DailyPrice(Base):
     pct_change: Mapped[float | None] = mapped_column(Float)
     turnover_rate: Mapped[float | None] = mapped_column(Float)
     is_suspended: Mapped[bool] = mapped_column(Boolean, default=False)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
 
 
 class IndexDaily(Base):
     __tablename__ = "index_daily"
-    __table_args__ = (UniqueConstraint("index_code", "trade_date"),)
+    __table_args__ = (UniqueConstraint("batch_id", "index_code", "trade_date"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     batch_id: Mapped[int] = mapped_column(ForeignKey("data_batch.id"), index=True)
     index_code: Mapped[str] = mapped_column(String(16))
     trade_date: Mapped[date] = mapped_column(Date)
+    open: Mapped[float] = mapped_column(Float)
+    high: Mapped[float] = mapped_column(Float)
+    low: Mapped[float] = mapped_column(Float)
     close: Mapped[float] = mapped_column(Float)
     pct_change: Mapped[float | None] = mapped_column(Float)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
 
 
 class DailyIndicator(Base):
     __tablename__ = "daily_indicator"
-    __table_args__ = (UniqueConstraint("market", "stock_code", "trade_date", "rule_version"),)
+    __table_args__ = (
+        UniqueConstraint("batch_id", "market", "stock_code", "trade_date", "rule_version"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     batch_id: Mapped[int] = mapped_column(ForeignKey("data_batch.id"), index=True)
@@ -165,6 +181,9 @@ class CandidateResult(Base):
     stock_code: Mapped[str] = mapped_column(String(16))
     score: Mapped[float] = mapped_column(Float)
     reasons: Mapped[list[str]] = mapped_column(JSON)
+    positive_event_count: Mapped[int] = mapped_column(Integer, default=0)
+    volume_ratio: Mapped[float | None] = mapped_column(Float)
+    pct_change: Mapped[float | None] = mapped_column(Float)
 
 
 class WatchlistGroup(Base):
@@ -177,7 +196,7 @@ class WatchlistGroup(Base):
 
 class WatchlistItem(Base):
     __tablename__ = "watchlist_item"
-    __table_args__ = (UniqueConstraint("group_id", "market", "stock_code"),)
+    __table_args__ = (UniqueConstraint("market", "stock_code"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     group_id: Mapped[int] = mapped_column(ForeignKey("watchlist_group.id"), index=True)
@@ -280,3 +299,18 @@ class SystemSetting(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+
+class OperationLog(Base):
+    __tablename__ = "operation_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_name: Mapped[str] = mapped_column(String(64), index=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
+    )
+    page: Mapped[str] = mapped_column(String(64))
+    batch_id: Mapped[int | None] = mapped_column(ForeignKey("data_batch.id"), index=True)
+    market: Mapped[str | None] = mapped_column(String(8))
+    stock_code: Mapped[str | None] = mapped_column(String(16))
+    details: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)

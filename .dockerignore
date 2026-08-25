@@ -1,0 +1,11 @@
+.git
+.worktrees
+.gdp-state
+backend
+docs
+output
+frontend/node_modules
+frontend/dist
+frontend/coverage
+frontend/playwright-report
+frontend/test-results

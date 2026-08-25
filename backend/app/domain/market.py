@@ -9,3 +9,4 @@ class MarketBar:
     volume: int
     high_qfq: float | None = None
     pct_change_raw: float | None = None
+    is_suspended: bool = False

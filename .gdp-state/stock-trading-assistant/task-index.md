@@ -10,5 +10,5 @@
 | T006 P0 REST interface | done | S1,S2,S3 | C001 | `evidence/T006-api-v1.md` | 认证属于远程部署门禁 |
 | T007 前端 P0 页面 | done | S1,S3,S6,F1 | C001,C002 | `evidence/T007-frontend-p0.md` | 浏览器像素与窄屏待 E2E |
 | T008 P1 功能 | done | S1,S2,S6 | C001,C002 | `evidence/T008-p1-features.md` | 自定义规则全量回放待 E2E |
-| T009 E2E 本地闭环 | in_progress | S1,S4,S6,F1,F4 | C002,C003 | pending | 浏览器环境 |
-| T010 部署与最终审计 | pending | S3,S5 | C001,C003,C005 | pending | 容器环境 |
+| T009 E2E 本地闭环 | done | S1,S4,S6,F1,F4 | C002,C003 | `evidence/T009-e2e-prd-audit.md` | 全市场外部源压测待试运行 |
+| T010 部署与最终审计 | done | S3,S5 | C001,C003,C005 | `evidence/T010-deployment.md` | 生产服务器上线不在本轮范围 |

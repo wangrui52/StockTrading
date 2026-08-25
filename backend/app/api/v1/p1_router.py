@@ -8,9 +8,11 @@ from sqlalchemy import func, select
 from app.api.v1.router import APIError, SessionDep
 from app.infrastructure.models import (
     AlertRuleVersion,
+    DataBatch,
     DecisionNote,
     RuleVersion,
     ScreenerPreset,
+    SyncJob,
     SystemSetting,
 )
 
@@ -25,6 +27,12 @@ class PresetRequest(BaseModel):
 
 class PresetResponse(PresetRequest):
     id: int
+
+
+class PresetUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=64)
+    conditions: dict[str, Any] | None = None
+    is_default: bool | None = None
 
 
 class PresetList(BaseModel):
@@ -96,6 +104,9 @@ class SettingsResponse(SettingsUpdate):
     adapter_version: str
     current_rule_version: str
     indicator_parameters: dict[str, int]
+    last_successful_batch: date | None
+    completeness_rate: float | None
+    failed_jobs: list[dict[str, Any]]
 
 
 @router.get("/screener-presets", response_model=PresetList)
@@ -117,6 +128,36 @@ def create_preset(payload: PresetRequest, db: SessionDep) -> dict[str, Any]:
     db.add(item)
     db.commit()
     return _preset(item)
+
+
+@router.patch("/screener-presets/{preset_id}", response_model=PresetResponse)
+def update_preset(preset_id: int, payload: PresetUpdate, db: SessionDep) -> dict[str, Any]:
+    item = _require_preset(db, preset_id)
+    if (
+        payload.name
+        and payload.name != item.name
+        and db.scalar(select(ScreenerPreset.id).where(ScreenerPreset.name == payload.name))
+    ):
+        raise APIError(409, "PRESET_NAME_EXISTS", "筛选方案名称已存在")
+    if payload.is_default:
+        for other in db.scalars(select(ScreenerPreset).where(ScreenerPreset.is_default.is_(True))):
+            other.is_default = False
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(item, key, value)
+    db.commit()
+    return _preset(item)
+
+
+@router.post("/screener-presets/{preset_id}/default", response_model=PresetResponse)
+def default_preset(preset_id: int, db: SessionDep) -> dict[str, Any]:
+    return update_preset(preset_id, PresetUpdate(is_default=True), db)
+
+
+@router.delete("/screener-presets/{preset_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_preset(preset_id: int, db: SessionDep) -> Response:
+    db.delete(_require_preset(db, preset_id))
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/decision-notes", response_model=NoteList)
@@ -235,6 +276,22 @@ def update_alert_rule(logical_id: int, payload: AlertRuleUpdate, db: SessionDep)
     return _alert_rule(item)
 
 
+@router.delete("/alert-rules/{logical_id}", response_model=AlertRuleResponse)
+def delete_alert_rule(logical_id: int, db: SessionDep) -> dict[str, Any]:
+    previous = _latest_alert_rule(db, logical_id)
+    item = AlertRuleVersion(
+        logical_id=logical_id,
+        version=previous.version + 1,
+        name=previous.name,
+        rule_code=previous.rule_code,
+        threshold=previous.threshold,
+        enabled=False,
+    )
+    db.add(item)
+    db.commit()
+    return _alert_rule(item)
+
+
 @router.get("/settings", response_model=SettingsResponse)
 def get_settings(db: SessionDep) -> dict[str, Any]:
     return _settings(db)
@@ -243,24 +300,40 @@ def get_settings(db: SessionDep) -> dict[str, Any]:
 @router.patch("/settings", response_model=SettingsResponse)
 def update_settings(payload: SettingsUpdate, db: SessionDep) -> dict[str, Any]:
     item = db.get(SystemSetting, "application")
-    value = {**_settings(db), **payload.model_dump()}
+    value = payload.model_dump()
     if item is None:
         item = SystemSetting(key="application", value=value)
         db.add(item)
     else:
-        item.value = value
+        item.value = {**item.value, **value}
     db.commit()
-    return value
+    return _settings(db)
 
 
 def _settings(db: SessionDep) -> dict[str, Any]:
     item = db.get(SystemSetting, "application")
+    batch = db.scalar(select(DataBatch).where(DataBatch.is_active.is_(True)))
+    failed = db.scalars(
+        select(SyncJob).where(SyncJob.status == "FAILED").order_by(SyncJob.id.desc()).limit(5)
+    )
     defaults = {
         "auto_sync_enabled": True,
         "auto_sync_time": "18:30",
         "adapter_version": "akshare-1.18.94",
-        "current_rule_version": "v1",
+        "current_rule_version": batch.rule_version if batch else "v1",
         "indicator_parameters": {"rsi_period": 14, "boll_period": 20},
+        "last_successful_batch": batch.trade_date if batch else None,
+        "completeness_rate": batch.completeness_rate if batch else None,
+        "failed_jobs": [
+            {
+                "id": job.id,
+                "target_trade_date": job.target_trade_date,
+                "stage": job.stage,
+                "error_summary": job.error_summary,
+                "retry_count": job.retry_count,
+            }
+            for job in failed
+        ],
     }
     return {**defaults, **(item.value if item else {})}
 
@@ -269,6 +342,24 @@ def _require_note(db: SessionDep, note_id: int) -> DecisionNote:
     item = db.get(DecisionNote, note_id)
     if item is None:
         raise APIError(404, "NOTE_NOT_FOUND", "关注笔记不存在")
+    return item
+
+
+def _require_preset(db: SessionDep, preset_id: int) -> ScreenerPreset:
+    item = db.get(ScreenerPreset, preset_id)
+    if item is None:
+        raise APIError(404, "PRESET_NOT_FOUND", "筛选方案不存在")
+    return item
+
+
+def _latest_alert_rule(db: SessionDep, logical_id: int) -> AlertRuleVersion:
+    item = db.scalar(
+        select(AlertRuleVersion)
+        .where(AlertRuleVersion.logical_id == logical_id)
+        .order_by(AlertRuleVersion.version.desc())
+    )
+    if item is None:
+        raise APIError(404, "ALERT_RULE_NOT_FOUND", "提醒规则不存在")
     return item
 
 

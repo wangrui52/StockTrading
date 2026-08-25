@@ -34,6 +34,17 @@ class PriceRecord:
     is_suspended: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class IndexRecord:
+    index_code: str
+    trade_date: date
+    open: float
+    high: float
+    low: float
+    close: float
+    pct_change: float | None
+
+
 class MarketDataGateway(Protocol):
     adapter_version: str
 
@@ -41,4 +52,8 @@ class MarketDataGateway(Protocol):
 
     def list_stocks(self) -> list[StockRecord]: ...
 
-    def daily_prices(self, stock: StockRecord, end_date: date) -> list[PriceRecord]: ...
+    def daily_prices(
+        self, stock: StockRecord, end_date: date, *, start_date: date | None = None
+    ) -> list[PriceRecord]: ...
+
+    def index_prices(self, end_date: date) -> list[IndexRecord]: ...

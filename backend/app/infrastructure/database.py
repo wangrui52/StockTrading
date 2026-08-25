@@ -1,3 +1,5 @@
+import os
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -13,7 +15,8 @@ def create_sqlite_memory_session_factory() -> sessionmaker[Session]:
 
 
 def create_sqlite_session_factory(
-    url: str = "sqlite+pysqlite:///./stock_trading.db",
+    url: str | None = None,
 ) -> sessionmaker[Session]:
+    url = url or os.getenv("DATABASE_URL", "sqlite+pysqlite:///./stock_trading.db")
     engine = create_engine(url, connect_args={"check_same_thread": False})
     return sessionmaker(bind=engine, expire_on_commit=False)
