@@ -11,6 +11,18 @@
 
 ## 本地启动
 
+### 一键启动（推荐）
+
+macOS 可在 Finder 中双击根目录的 `start_local.command`，也可以在终端运行：
+
+```bash
+./start_local.command
+```
+
+脚本会自动启动 Docker Desktop、构建服务、初始化演示数据并打开浏览器。已有数据库和配置不会被覆盖。启动成功后访问 `http://127.0.0.1:8080`。
+
+### 源码开发方式
+
 依赖 Python 3.13、`uv`、Node.js 22 和 `pnpm`。
 
 ```bash
