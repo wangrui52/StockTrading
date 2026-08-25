@@ -31,19 +31,45 @@ docker_is_ready() {
   return 1
 }
 
-if ! docker_is_ready; then
-  print "Docker Desktop 尚未运行，正在启动…"
-  open -a Docker || fail "无法启动 Docker Desktop。"
+docker_desktop_is_running() {
+  local desktop_status
+  desktop_status=$(docker desktop status 2>/dev/null) || return 1
+  [[ "$desktop_status" == *running* ]]
+}
 
-  docker_ready=0
-  for attempt in {1..60}; do
+wait_for_docker() {
+  local max_attempts=$1
+  local attempt
+
+  for (( attempt = 1; attempt <= max_attempts; attempt++ )); do
     if docker_is_ready; then
-      docker_ready=1
-      break
+      return 0
     fi
     sleep 1
   done
-  [[ "$docker_ready" == 1 ]] || fail "等待 Docker Desktop 启动超时。"
+
+  return 1
+}
+
+if ! docker_is_ready; then
+  if docker_desktop_is_running; then
+    print "Docker Desktop 已运行，正在等待 Docker Engine…"
+
+    if ! wait_for_docker 15; then
+      print "检测到 Docker Desktop 已运行但引擎无响应，正在重启…"
+      if ! docker desktop restart; then
+        print -u2 "Docker Desktop 命令重启失败，尝试重新打开应用…"
+        osascript -e 'tell application "Docker" to quit' >/dev/null 2>&1 || true
+        sleep 3
+        open -a Docker || fail "无法重启 Docker Desktop。"
+      fi
+    fi
+  else
+    print "Docker Desktop 尚未运行，正在启动…"
+    open -a Docker || fail "无法启动 Docker Desktop。"
+  fi
+
+  wait_for_docker 90 || fail "Docker Engine 启动超时。请打开 Docker Desktop，在 Troubleshoot 中选择 Restart 后重试。"
 fi
 
 if [[ ! -f .env ]]; then

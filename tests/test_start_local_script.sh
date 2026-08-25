@@ -13,6 +13,7 @@ zsh -n "$script_path"
 required_patterns=(
   'script_dir="${0:A:h}"'
   'docker info'
+  'docker desktop restart'
   'open -a Docker'
   'docker compose -f deploy/docker-compose.yml up --build -d'
   'python -m scripts.seed_demo'
