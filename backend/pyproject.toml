@@ -12,6 +12,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "alembic>=1.16,<2",
     "httpx>=0.28,<1",
     "pytest>=8.4,<9",
     "pytest-cov>=6.2,<7",
@@ -44,4 +45,3 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
-
