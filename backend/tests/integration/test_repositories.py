@@ -41,6 +41,63 @@ def ready_batch(trade_date: date, *, active: bool = False) -> DataBatch:
     )
 
 
+def test_failed_or_demo_batch_signals_do_not_leak_into_successful_retry(session_factory):
+    with session_factory() as session:
+        first = ready_batch(date(2026, 8, 27))
+        first.status, first.source = "FAILED", "demo-v1"
+        second = ready_batch(first.trade_date)
+        second.source = "tencent-sina-v1"
+        session.add_all([first, second])
+        session.commit()
+        store = SQLAlchemySignalStore(session)
+        args = dict(
+            market="SH",
+            stock_code="600000",
+            trade_date=first.trade_date,
+            rule_code="DAILY_DROP",
+            rule_version="v1",
+        )
+        old = store.record_signal(batch_id=first.id, payload={"fake": True}, **args)
+        store.confirm(old.id, confirmed_at=datetime.now(UTC))
+        current = store.record_signal(batch_id=second.id, payload={"fake": False}, **args)
+        session.commit()
+        assert current.id != old.id
+        assert current.batch_id == second.id and current.payload == {"fake": False}
+        state = session.scalar(
+            select(AlertEventState).where(AlertEventState.signal_event_id == current.id)
+        )
+        assert state.status == "TRIGGERED"
+
+
+@pytest.mark.parametrize("previous_status", ["READY", "READY_WITH_GAPS"])
+def test_confirmed_real_signal_keeps_confirmation_across_ready_batches(
+    session_factory, previous_status
+):
+    with session_factory() as session:
+        first, second = ready_batch(date(2026, 8, 26)), ready_batch(date(2026, 8, 27))
+        first.source = second.source = "tencent-sina-v1"
+        first.status = previous_status
+        session.add_all([first, second])
+        session.commit()
+        store = SQLAlchemySignalStore(session)
+        args = dict(
+            market="SH",
+            stock_code="600000",
+            trade_date=first.trade_date,
+            rule_code="DAILY_DROP",
+            rule_version="v1",
+            payload={},
+        )
+        old = store.record_signal(batch_id=first.id, **args)
+        store.confirm(old.id, confirmed_at=datetime.now(UTC))
+        new = store.record_signal(batch_id=second.id, **args)
+        assert old.id != new.id
+        state = session.scalar(
+            select(AlertEventState).where(AlertEventState.signal_event_id == new.id)
+        )
+        assert state.status == "CONFIRMED"
+
+
 def test_daily_price_unique_key_rejects_duplicate_market_date_and_adjustment(
     session_factory: sessionmaker[Session],
 ) -> None:

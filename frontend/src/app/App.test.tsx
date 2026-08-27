@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -31,6 +31,92 @@ afterEach(() => {
 })
 
 describe('App', () => {
+  it.each([
+    ['浦发银行', '浦发银行 · SH'],
+    [null, '名称暂缺 · SH'],
+    [undefined, '名称暂缺 · SH'],
+    ['', '名称暂缺 · SH'],
+  ])('候选股同时展示代码和名称，名称为 %s', async (stockName, expected) => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/alerts?')) return Response.json({ ...dashboard, items: [] })
+      return Response.json({ ...dashboard, candidates: [{ ...dashboard.candidates[0], stock_name: stockName }] })
+    }))
+
+    render(<App />)
+
+    expect(await screen.findByText(expected)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '600000' })).toHaveAttribute('href', '/stocks/SH/600000')
+  })
+
+  it('将候选股命中原因显示为中文，并保留未知原因', async () => {
+    const reasons = ['BREAKOUT_MA20_WITH_VOLUME', 'MA5_ABOVE_MA20', 'MACD_GOLDEN_CROSS', 'PRICE_ABOVE_MA20', 'RSI_IN_CANDIDATE_RANGE', 'FUTURE_RULE']
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/alerts?')) return Response.json({ ...dashboard, items: [] })
+      return Response.json({ ...dashboard, candidates: [{ ...dashboard.candidates[0], reasons }] })
+    }))
+
+    render(<App />)
+
+    expect(await screen.findByRole('cell', {
+      name: '放量突破20日均线 / 5日均线高于20日均线 / MACD金叉 / 收盘价高于20日均线 / RSI处于45～75区间 / FUTURE_RULE',
+    })).toBeInTheDocument()
+    expect(screen.queryByText(/BREAKOUT_MA20_WITH_VOLUME/)).not.toBeInTheDocument()
+  })
+
+  it('keeps a sync action for demo data and asks the backend for the latest trade date', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/sync-jobs')) return Response.json({ job_id: 8, batch_id: 8 })
+      if (String(input).includes('/alerts?')) return Response.json({ ...dashboard, items: [] })
+      return Response.json({ ...dashboard, source: 'demo-v1' })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    expect(await screen.findByText('演示数据（非真实行情）')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '同步最新交易日' }))
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/sync-jobs', expect.objectContaining({
+      method: 'POST', body: '{}',
+    }))
+  })
+
+  it('refreshes dashboard automatically when the background job activates a new batch', async () => {
+    let submitted = false
+    let statusPolls = 0
+    let ready = false
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/sync-jobs')) { submitted = true; return Response.json({ job_id: 8, batch_id: 8 }) }
+      if (url.endsWith('/system/status')) {
+        if (submitted) ready = ++statusPolls >= 2
+        return Response.json({
+          active_batch: { ...dashboard, batch_id: ready ? 8 : 7 },
+          latest_sync: { id: 8, batch_id: 8, status: submitted && !ready ? 'FETCHING' : 'READY',
+            completed_count: 0, failed_count: 0, failed_items: [] },
+        })
+      }
+      if (url.includes('/alerts?')) return Response.json({ ...dashboard, items: [] })
+      return Response.json({ ...dashboard, batch_id: ready ? 8 : 7,
+        trade_date: ready ? '2026-08-27' : '2025-03-31' })
+    }))
+    render(<App />)
+    await userEvent.click(await screen.findByRole('button', { name: '同步最新交易日' }))
+    await waitFor(() => expect(screen.getByText('交易日 2026-08-27')).toBeInTheDocument(), { timeout: 5000 })
+  })
+
+  it('shows sync failure details and enables retry without hiding the old batch', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/alerts?')) return Response.json({ ...dashboard, items: [] })
+      if (String(input).endsWith('/sync-jobs')) return Response.json({ error: {
+        code: 'MARKET_DATA_UNAVAILABLE', message: '交易日历暂时不可用',
+      } }, { status: 503 })
+      return Response.json(dashboard)
+    }))
+    render(<App />)
+    await userEvent.click(await screen.findByRole('button', { name: '同步最新交易日' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('交易日历暂时不可用')
+    expect(screen.getByText('交易日 2025-03-31')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '同步最新交易日' })).toBeEnabled()
+  })
+
   it('renders loading then the active batch dashboard without calling it realtime data', async () => {
     vi.stubGlobal(
       'fetch',

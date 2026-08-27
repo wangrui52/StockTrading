@@ -94,9 +94,11 @@ for attempt in {1..3}; do
 done
 [[ "$compose_started" == 1 ]] || fail "连续三次构建服务失败，请检查网络和 Docker 日志。"
 
-print "正在准备演示数据（已有数据不会重复创建）…"
-docker compose -f deploy/docker-compose.yml exec -T backend \
-  uv run --no-sync python -m scripts.seed_demo
+if [[ "${START_LOCAL_DEMO:-0}" == 1 ]]; then
+  print "显式启用演示模式：正在准备固定样本（非真实行情）…"
+  docker compose -f deploy/docker-compose.yml exec -T backend \
+    uv run --no-sync python -m scripts.seed_demo
+fi
 
 print "正在检查服务状态…"
 service_ready=0
@@ -110,6 +112,7 @@ done
 [[ "$service_ready" == 1 ]] || fail "服务健康检查未通过，请运行 docker compose logs 查看日志。"
 
 print "\n启动成功：$app_url"
+print "请在行情看板点击“同步最新交易日”（空数据库为“同步数据”）获取真实行情。"
 print "停止服务：docker compose -f deploy/docker-compose.yml down"
 
 if [[ "${START_LOCAL_NO_OPEN:-0}" != 1 ]]; then

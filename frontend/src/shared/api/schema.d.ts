@@ -551,6 +551,11 @@ export interface components {
         /** AlertListResponse */
         AlertListResponse: {
             /**
+             * Source
+             * @default unknown
+             */
+            source: string;
+            /**
              * Trade Date
              * Format: date
              */
@@ -632,6 +637,11 @@ export interface components {
         /** BatchActivationResponse */
         BatchActivationResponse: {
             /**
+             * Source
+             * @default unknown
+             */
+            source: string;
+            /**
              * Trade Date
              * Format: date
              */
@@ -649,6 +659,11 @@ export interface components {
         };
         /** BatchContext */
         BatchContext: {
+            /**
+             * Source
+             * @default unknown
+             */
+            source: string;
             /**
              * Trade Date
              * Format: date
@@ -669,6 +684,8 @@ export interface components {
             market: string;
             /** Stock Code */
             stock_code: string;
+            /** Stock Name */
+            stock_name?: string | null;
             /** Score */
             score: number;
             /** Reasons */
@@ -682,6 +699,11 @@ export interface components {
         };
         /** DashboardResponse */
         DashboardResponse: {
+            /**
+             * Source
+             * @default unknown
+             */
+            source: string;
             /**
              * Trade Date
              * Format: date
@@ -733,6 +755,11 @@ export interface components {
         };
         /** IndicatorSeriesResponse */
         IndicatorSeriesResponse: {
+            /**
+             * Source
+             * @default unknown
+             */
+            source: string;
             /**
              * Trade Date
              * Format: date
@@ -891,6 +918,11 @@ export interface components {
         /** PriceSeriesResponse */
         PriceSeriesResponse: {
             /**
+             * Source
+             * @default unknown
+             */
+            source: string;
+            /**
              * Trade Date
              * Format: date
              */
@@ -915,6 +947,11 @@ export interface components {
         };
         /** ReportResponse */
         ReportResponse: {
+            /**
+             * Source
+             * @default unknown
+             */
+            source: string;
             /**
              * Trade Date
              * Format: date
@@ -1014,6 +1051,11 @@ export interface components {
         /** ScreeningResponse */
         ScreeningResponse: {
             /**
+             * Source
+             * @default unknown
+             */
+            source: string;
+            /**
              * Trade Date
              * Format: date
              */
@@ -1088,6 +1130,11 @@ export interface components {
         /** SignalSeriesResponse */
         SignalSeriesResponse: {
             /**
+             * Source
+             * @default unknown
+             */
+            source: string;
+            /**
              * Trade Date
              * Format: date
              */
@@ -1105,6 +1152,11 @@ export interface components {
         };
         /** StockDetailResponse */
         StockDetailResponse: {
+            /**
+             * Source
+             * @default unknown
+             */
+            source: string;
             /**
              * Trade Date
              * Format: date
@@ -1166,11 +1218,8 @@ export interface components {
         };
         /** SyncRequest */
         SyncRequest: {
-            /**
-             * Target Trade Date
-             * Format: date
-             */
-            target_trade_date: string;
+            /** Target Trade Date */
+            target_trade_date?: string | null;
         };
         /** SystemStatusResponse */
         SystemStatusResponse: {

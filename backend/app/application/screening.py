@@ -31,6 +31,7 @@ def screen(session: Session, batch: DataBatch, criteria: dict[str, Any]) -> dict
     signals: dict[tuple[str, str], set[str]] = defaultdict(set)
     for item in session.scalars(
         select(SignalEvent).where(
+            SignalEvent.batch_id == batch.id,
             SignalEvent.trade_date == batch.trade_date,
             SignalEvent.rule_version == batch.rule_version,
         )

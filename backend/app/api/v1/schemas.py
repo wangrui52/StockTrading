@@ -11,6 +11,7 @@ class HealthResponse(BaseModel):
 
 
 class BatchContext(BaseModel):
+    source: str = "unknown"
     trade_date: date
     batch_id: int
     rule_version: str
@@ -48,6 +49,7 @@ class SystemStatusResponse(BaseModel):
 class CandidateItem(BaseModel):
     market: str
     stock_code: str
+    stock_name: str | None = None
     score: float
     reasons: list[str]
     close: float | None = None

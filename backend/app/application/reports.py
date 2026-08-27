@@ -33,6 +33,7 @@ def create_stock_report(
     )
     signals = session.scalars(
         select(SignalEvent).where(
+            SignalEvent.batch_id == batch.id,
             SignalEvent.market == market,
             SignalEvent.stock_code == stock_code,
             SignalEvent.trade_date <= batch.trade_date,

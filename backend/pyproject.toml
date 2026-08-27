@@ -5,6 +5,7 @@ description = "A 股日线交易辅助决策工具后端"
 requires-python = ">=3.13"
 dependencies = [
     "akshare>=1.18.94,<2",
+    "mini-racer==0.14.1",
     "alembic>=1.16,<2",
     "fastapi>=0.116,<1",
     "pandas>=2.3,<4",
@@ -26,6 +27,10 @@ addopts = "-ra --strict-markers"
 pythonpath = ["."]
 testpaths = ["tests"]
 markers = ["live: 访问真实外部数据源，默认测试不执行"]
+
+[tool.uv]
+# AkShare 在 Linux 仍依赖不提供 ARM64 原生库的旧包。两者共享导入名，禁止混装。
+override-dependencies = ["py-mini-racer; sys_platform == 'never'"]
 
 [tool.coverage.run]
 branch = true

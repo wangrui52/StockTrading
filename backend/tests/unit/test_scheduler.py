@@ -6,6 +6,7 @@ from app.application.scheduler import DailySyncScheduler
 from app.application.sync_pipeline import SyncResult
 from app.infrastructure.database import create_sqlite_memory_session_factory
 from app.infrastructure.models import Base, SyncJob, SystemSetting
+from app.ports.market_data import MarketDataUnavailable
 
 
 def factory() -> sessionmaker[Session]:
@@ -61,3 +62,19 @@ def test_scheduler_respects_disabled_setting_and_non_trading_day() -> None:
 
     assert scheduler.tick(datetime(2025, 3, 31, 11, 0, tzinfo=UTC)) is False
     assert calls == []
+
+
+def test_scheduler_calendar_error_is_visible_and_loop_survives():
+    session_factory = factory()
+
+    def unavailable(_target):
+        raise MarketDataUnavailable("calendar offline")
+
+    scheduler = DailySyncScheduler(session_factory, unavailable, lambda *_a, **_k: None)
+    assert scheduler.tick(datetime(2026, 8, 27, 11, tzinfo=UTC)) is False
+    with session_factory() as session:
+        from sqlalchemy import select
+
+        job = session.scalar(select(SyncJob))
+        assert job.status == "FAILED"
+        assert "calendar offline" in job.error_summary

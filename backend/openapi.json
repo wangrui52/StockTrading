@@ -1452,6 +1452,11 @@
       },
       "AlertListResponse": {
         "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "unknown"
+          },
           "trade_date": {
             "type": "string",
             "format": "date",
@@ -1641,6 +1646,11 @@
       },
       "BatchActivationResponse": {
         "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "unknown"
+          },
           "trade_date": {
             "type": "string",
             "format": "date",
@@ -1680,6 +1690,11 @@
       },
       "BatchContext": {
         "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "unknown"
+          },
           "trade_date": {
             "type": "string",
             "format": "date",
@@ -1721,6 +1736,17 @@
           "stock_code": {
             "type": "string",
             "title": "Stock Code"
+          },
+          "stock_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stock Name"
           },
           "score": {
             "type": "number",
@@ -1778,6 +1804,11 @@
       },
       "DashboardResponse": {
         "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "unknown"
+          },
           "trade_date": {
             "type": "string",
             "format": "date",
@@ -1916,6 +1947,11 @@
       },
       "IndicatorSeriesResponse": {
         "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "unknown"
+          },
           "trade_date": {
             "type": "string",
             "format": "date",
@@ -2300,6 +2336,11 @@
       },
       "PriceSeriesResponse": {
         "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "unknown"
+          },
           "trade_date": {
             "type": "string",
             "format": "date",
@@ -2360,6 +2401,11 @@
       },
       "ReportResponse": {
         "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "unknown"
+          },
           "trade_date": {
             "type": "string",
             "format": "date",
@@ -2609,6 +2655,11 @@
       },
       "ScreeningResponse": {
         "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "unknown"
+          },
           "trade_date": {
             "type": "string",
             "format": "date",
@@ -2796,6 +2847,11 @@
       },
       "SignalSeriesResponse": {
         "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "unknown"
+          },
           "trade_date": {
             "type": "string",
             "format": "date",
@@ -2838,6 +2894,11 @@
       },
       "StockDetailResponse": {
         "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "unknown"
+          },
           "trade_date": {
             "type": "string",
             "format": "date",
@@ -3030,15 +3091,19 @@
       "SyncRequest": {
         "properties": {
           "target_trade_date": {
-            "type": "string",
-            "format": "date",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Target Trade Date"
           }
         },
         "type": "object",
-        "required": [
-          "target_trade_date"
-        ],
         "title": "SyncRequest"
       },
       "SystemStatusResponse": {

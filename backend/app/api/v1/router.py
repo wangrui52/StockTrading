@@ -114,7 +114,7 @@ class ReportRequest(BaseModel):
 
 
 class SyncRequest(BaseModel):
-    target_trade_date: date
+    target_trade_date: date | None = None
 
 
 class BatchActivationRequest(BaseModel):
@@ -159,17 +159,18 @@ def system_status(db: SessionDep) -> dict[str, Any]:
 def create_sync_job(
     payload: SyncRequest, request: Request, background_tasks: BackgroundTasks
 ) -> dict[str, Any]:
+    target = payload.target_trade_date or request.app.state.latest_trade_date()
     if request.app.state.sync_prepare is not None:
-        result, should_execute = request.app.state.sync_prepare(payload.target_trade_date)
+        result, should_execute = request.app.state.sync_prepare(target)
         if should_execute:
             background_tasks.add_task(
                 request.app.state.sync_execute,
                 result.job_id,
                 result.batch_id,
-                payload.target_trade_date,
+                target,
             )
     else:
-        result = request.app.state.sync_runner(payload.target_trade_date)
+        result = request.app.state.sync_runner(target)
     return {"job_id": result.job_id, "batch_id": result.batch_id}
 
 
@@ -270,6 +271,7 @@ def stock_detail(
     signals = list(
         db.scalars(
             select(SignalEvent).where(
+                SignalEvent.batch_id == batch.id,
                 SignalEvent.market == market,
                 SignalEvent.stock_code == stock_code,
                 SignalEvent.trade_date == batch.trade_date,
@@ -357,6 +359,7 @@ def stock_signals(market: str, stock_code: str, db: SessionDep) -> dict[str, Any
     rows = db.scalars(
         select(SignalEvent)
         .where(
+            SignalEvent.batch_id == batch.id,
             SignalEvent.market == market,
             SignalEvent.stock_code == stock_code,
             SignalEvent.trade_date <= batch.trade_date,
@@ -433,6 +436,7 @@ def alerts(
 ) -> dict[str, Any]:
     batch = require_batch(db)
     query = select(SignalEvent).where(
+        SignalEvent.batch_id == batch.id,
         SignalEvent.trade_date == batch.trade_date,
         SignalEvent.rule_version == batch.rule_version,
     )
@@ -456,7 +460,9 @@ def alerts(
 
 @router.post("/alerts/{signal_id}/confirm", response_model=AlertStateResponse)
 def confirm_alert(signal_id: int, db: SessionDep) -> dict[str, Any]:
-    if db.get(SignalEvent, signal_id) is None:
+    batch = require_batch(db)
+    signal = db.get(SignalEvent, signal_id)
+    if signal is None or signal.batch_id != batch.id:
         raise APIError(404, "ALERT_NOT_FOUND", "提醒不存在")
     state_row = SQLAlchemySignalStore(db).confirm(signal_id, confirmed_at=datetime.now(UTC))
     db.commit()
@@ -552,6 +558,7 @@ def _watchlist_payload(db: Session, item: WatchlistItem, batch: DataBatch | None
         signals = list(
             db.scalars(
                 select(SignalEvent).where(
+                    SignalEvent.batch_id == batch.id,
                     SignalEvent.market == item.market,
                     SignalEvent.stock_code == item.stock_code,
                     SignalEvent.trade_date == batch.trade_date,

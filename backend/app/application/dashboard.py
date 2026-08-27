@@ -13,6 +13,7 @@ def active_batch(session: Session) -> DataBatch | None:
 
 def context(batch: DataBatch) -> dict[str, Any]:
     return {
+        "source": batch.source,
         "trade_date": batch.trade_date,
         "batch_id": batch.id,
         "rule_version": batch.rule_version,
@@ -22,8 +23,13 @@ def context(batch: DataBatch) -> dict[str, Any]:
 
 
 def dashboard_payload(session: Session, batch: DataBatch) -> dict[str, Any]:
-    candidates = session.scalars(
-        select(CandidateResult)
+    candidates = session.execute(
+        select(CandidateResult, StockBasic.stock_name)
+        .outerjoin(
+            StockBasic,
+            (StockBasic.market == CandidateResult.market)
+            & (StockBasic.stock_code == CandidateResult.stock_code),
+        )
         .where(CandidateResult.batch_id == batch.id)
         .order_by(
             CandidateResult.positive_event_count.desc(),
@@ -39,7 +45,7 @@ def dashboard_payload(session: Session, batch: DataBatch) -> dict[str, Any]:
         if (
             item := session.scalar(
                 select(IndexDaily)
-                .where(IndexDaily.index_code == code, IndexDaily.trade_date <= batch.trade_date)
+                .where(IndexDaily.index_code == code, IndexDaily.batch_id == batch.id)
                 .order_by(IndexDaily.trade_date.desc(), IndexDaily.id.desc())
             )
         )
@@ -52,10 +58,11 @@ def dashboard_payload(session: Session, batch: DataBatch) -> dict[str, Any]:
             {
                 "market": item.market,
                 "stock_code": item.stock_code,
+                "stock_name": name,
                 "score": item.score,
                 "reasons": item.reasons,
             }
-            for item in candidates
+            for item, name in candidates
         ],
         "market_summary": (
             _market_summary(session, batch.id, batch.trade_date)

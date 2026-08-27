@@ -1,7 +1,8 @@
-from dataclasses import asdict, dataclass
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.sqlalchemy_repositories import SQLAlchemyBatchStore, SQLAlchemySignalStore
@@ -32,6 +33,10 @@ class NonTradingDayError(ValueError):
     pass
 
 
+class SyncInProgressError(ValueError):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class SyncResult:
     job_id: int
@@ -46,11 +51,13 @@ class SyncPipeline:
         *,
         rule_version: str = "v1",
         minimum_completeness: float = 0.99,
+        fetch_workers: int = 1,
     ) -> None:
         self.session_factory = session_factory
         self.gateway = gateway
         self.rule_version = rule_version
         self.minimum_completeness = minimum_completeness
+        self.fetch_workers = max(1, min(fetch_workers, 4))
         self.indicators = IndicatorEngine()
         self.signals = SignalEngine()
         self.candidates = CandidateEngine()
@@ -65,30 +72,34 @@ class SyncPipeline:
         self, target_trade_date: date, *, job_type: str = "MANUAL"
     ) -> tuple[SyncResult, bool]:
         with self.session_factory() as session:
+            # SQLite 先占写锁再检查并创建任务，跨 API/调度进程保持原子性。
+            session.connection().exec_driver_sql("BEGIN IMMEDIATE")
             running = session.scalar(
                 select(SyncJob)
                 .where(
-                    SyncJob.target_trade_date == target_trade_date,
                     SyncJob.status.in_(
                         ("PENDING", "FETCHING", "VALIDATING", "CALCULATING", "GENERATING_SIGNALS")
                     ),
                 )
                 .order_by(SyncJob.id.desc())
             )
-            if running is not None and running.batch_id is not None:
-                return SyncResult(job_id=running.id, batch_id=running.batch_id), False
+            if running is not None:
+                if running.target_trade_date == target_trade_date and running.batch_id is not None:
+                    return SyncResult(job_id=running.id, batch_id=running.batch_id), False
+                raise SyncInProgressError("已有同步任务正在执行，请等待完成")
             existing = session.scalar(
                 select(DataBatch).where(
                     DataBatch.trade_date == target_trade_date,
                     DataBatch.status == "READY",
                     DataBatch.rule_version == self.rule_version,
+                    DataBatch.source == self.gateway.adapter_version,
                 )
             )
             if existing is not None:
                 job_id = session.scalar(
                     select(SyncJob.id)
                     .where(
-                        SyncJob.target_trade_date == target_trade_date,
+                        SyncJob.batch_id == existing.id,
                         SyncJob.status == "READY",
                     )
                     .order_by(SyncJob.id.desc())
@@ -106,7 +117,12 @@ class SyncPipeline:
             session.add(job)
             session.commit()
 
-            is_open = self.gateway.is_trade_date(target_trade_date)
+            try:
+                is_open = self.gateway.is_trade_date(target_trade_date)
+            except Exception as error:
+                self._fail_job(job, f"交易日历获取失败：{error}")
+                session.commit()
+                raise
             calendar = session.scalar(
                 select(TradeCalendar).where(
                     TradeCalendar.market == "CN",
@@ -126,6 +142,7 @@ class SyncPipeline:
                 raise NonTradingDayError(f"{target_trade_date} is not a trading day")
 
             batch = DataBatch(
+                source=self.gateway.adapter_version,
                 trade_date=target_trade_date,
                 status="BUILDING",
                 completeness_rate=0.0,
@@ -148,10 +165,12 @@ class SyncPipeline:
             try:
                 return self._build_batch(session, job, batch, target_trade_date)
             except Exception as error:
+                failed_stage = job.stage
                 session.rollback()
                 failed_job = session.get(SyncJob, job.id)
                 failed_batch = session.get(DataBatch, batch.id)
                 assert failed_job is not None and failed_batch is not None
+                failed_job.stage = failed_stage
                 failed_batch.status = "FAILED"
                 self._fail_job(
                     failed_job,
@@ -172,22 +191,47 @@ class SyncPipeline:
             select(DataBatch).where(
                 DataBatch.is_active.is_(True),
                 DataBatch.id != batch.id,
+                DataBatch.source == self.gateway.adapter_version,
             )
         )
+        if previous_batch and not 0 < (target_trade_date - previous_batch.trade_date).days <= 10:
+            previous_batch = None
         incremental_start = target_trade_date - timedelta(days=10) if previous_batch else None
-        successful: list[tuple[StockBasic, list[PriceRecord]]] = []
+        successful_count = 0
         failures: list[str] = []
         total = len(stocks)
-        for position, source_stock in enumerate(stocks, start=1):
+        latest_custom_rules: dict[int, AlertRuleVersion] = {}
+        for item in session.scalars(
+            select(AlertRuleVersion).order_by(AlertRuleVersion.logical_id, AlertRuleVersion.version)
+        ):
+            latest_custom_rules[item.logical_id] = item
+        custom_rules = [item for item in latest_custom_rules.values() if item.enabled]
+        known_stocks = (
+            set(
+                session.execute(
+                    select(DailyPrice.market, DailyPrice.stock_code)
+                    .where(DailyPrice.batch_id == previous_batch.id)
+                    .distinct()
+                ).all()
+            )
+            if previous_batch
+            else set()
+        )
+        starts = {
+            (s.market, s.stock_code): incremental_start
+            if (s.market, s.stock_code) in known_stocks
+            else None
+            for s in stocks
+        }
+        for position, (source_stock, fetched, retries) in enumerate(
+            self._fetch_histories(stocks, target_trade_date, starts), start=1
+        ):
             stock = self._upsert_stock(session, source_stock)
             records = None
-            for attempt in range(3):
+            job.retry_count += retries
+            job.status = job.stage = "FETCHING"
+            if fetched is not None:
                 try:
-                    fetched = self.gateway.daily_prices(
-                        source_stock,
-                        target_trade_date,
-                        start_date=incremental_start,
-                    )
                     if previous_batch and self._has_qfq_revision(
                         session, previous_batch, source_stock, fetched
                     ):
@@ -196,19 +240,22 @@ class SyncPipeline:
                         fetched = self.gateway.daily_prices(
                             source_stock,
                             target_trade_date,
-                            start_date=target_trade_date - timedelta(days=550),
+                            start_date=None,
                         )
+                        # 前复权修订时用完整新历史替换，不拼接旧因子数据。
+                        replace_history = True
+                    else:
+                        replace_history = False
                     records = self._merge_with_previous(
                         session,
                         previous_batch,
                         source_stock,
                         fetched,
                         target_trade_date,
+                        replace_history=replace_history,
                     )
-                    break
                 except MarketDataUnavailable:
-                    if attempt < 2:
-                        job.retry_count += 1
+                    records = None
             if records is None:
                 failures.append(source_stock.stock_code)
             else:
@@ -217,16 +264,18 @@ class SyncPipeline:
                 except ValueError:
                     failures.append(source_stock.stock_code)
                 else:
-                    successful.append((stock, records))
-            job.completed_count = len(successful)
+                    job.status = job.stage = "CALCULATING"
+                    self._persist_prices(session, batch.id, records)
+                    self._calculate_stock(session, batch, stock, records, custom_rules)
+                    successful_count += 1
+            job.completed_count = successful_count
             job.failed_count = len(failures)
             job.failed_items = list(failures)
-            job.progress = position / total * 0.5 if total else 0.5
-            if position % 50 == 0:
-                session.commit()
+            job.progress = position / total * 0.95 if total else 0.95
+            session.commit()
 
-        batch.completeness_rate = len(successful) / total if total else 0.0
-        job.completed_count = len(successful)
+        batch.completeness_rate = successful_count / total if total else 0.0
+        job.completed_count = successful_count
         job.failed_count = len(failures)
         job.failed_items = list(failures)
         job.progress = 1.0
@@ -238,8 +287,6 @@ class SyncPipeline:
 
         job.status = job.stage = "VALIDATING"
         session.commit()
-        for _, records in successful:
-            self._persist_prices(session, batch.id, records)
         try:
             for item in self.gateway.index_prices(target_trade_date):
                 session.add(
@@ -257,18 +304,6 @@ class SyncPipeline:
         except MarketDataUnavailable:
             pass
 
-        latest_custom_rules: dict[int, AlertRuleVersion] = {}
-        for item in session.scalars(
-            select(AlertRuleVersion).order_by(AlertRuleVersion.logical_id, AlertRuleVersion.version)
-        ):
-            latest_custom_rules[item.logical_id] = item
-        custom_rules = [item for item in latest_custom_rules.values() if item.enabled]
-
-        job.status = job.stage = "CALCULATING"
-        session.commit()
-        for stock, records in successful:
-            self._calculate_stock(session, batch, stock, records, custom_rules)
-
         job.status = job.stage = "GENERATING_SIGNALS"
         batch.status = "READY"
         SQLAlchemyBatchStore(session).activate_ready_batch(batch.id)
@@ -276,6 +311,30 @@ class SyncPipeline:
         job.finished_at = datetime.now(UTC)
         session.commit()
         return SyncResult(job_id=job.id, batch_id=batch.id)
+
+    def _fetch_histories(self, stocks, target, starts):
+        def fetch(stock):
+            for attempt in range(3):
+                try:
+                    rows = self.gateway.daily_prices(
+                        stock, target, start_date=starts[(stock.market, stock.stock_code)]
+                    )
+                    if not rows or max(item.trade_date for item in rows) != target:
+                        raise MarketDataUnavailable("来源未返回目标交易日，不能判定为停牌")
+                    return stock, rows, attempt
+                except MarketDataUnavailable:
+                    continue
+            return stock, None, 2
+
+        # 只保留一个小窗口，避免全市场历史积压；所有数据库操作仍在主线程。
+        with ThreadPoolExecutor(max_workers=self.fetch_workers) as executor:
+            for offset in range(0, len(stocks), self.fetch_workers):
+                futures = [
+                    executor.submit(fetch, stock)
+                    for stock in stocks[offset : offset + self.fetch_workers]
+                ]
+                for future in futures:
+                    yield future.result()
 
     @staticmethod
     def _fail_job(job: SyncJob, message: str) -> None:
@@ -295,6 +354,7 @@ class SyncPipeline:
             stock = StockBasic(market=market, stock_code=code, stock_name=source.name)
             session.add(stock)
         stock.industry = source.industry
+        stock.stock_name = source.name
         stock.list_date = source.list_date
         stock.is_st = source.is_st
         return stock
@@ -316,6 +376,8 @@ class SyncPipeline:
         stock: StockRecord,
         fetched: list[PriceRecord],
         target_trade_date: date,
+        *,
+        replace_history: bool = False,
     ) -> list[PriceRecord]:
         previous: list[PriceRecord] = []
         if previous_batch is not None:
@@ -343,31 +405,15 @@ class SyncPipeline:
                     )
                 )
             ]
-        merged = {(item.trade_date, item.adjustment): item for item in previous}
-        merged.update({(item.trade_date, item.adjustment): item for item in fetched})
-        if fetched and max(item.trade_date for item in fetched) < target_trade_date:
-            for adjustment in ("raw", "qfq"):
-                latest = max(
-                    (item for item in merged.values() if item.adjustment == adjustment),
-                    key=lambda item: item.trade_date,
-                    default=None,
-                )
-                if latest is not None:
-                    merged[(target_trade_date, adjustment)] = PriceRecord(
-                        market=latest.market,
-                        stock_code=latest.stock_code,
-                        trade_date=target_trade_date,
-                        open=latest.close,
-                        high=latest.close,
-                        low=latest.close,
-                        close=latest.close,
-                        volume=0,
-                        amount=0,
-                        pct_change=None,
-                        turnover_rate=None,
-                        adjustment=adjustment,
-                        is_suspended=True,
-                    )
+        previous_values = {(item.trade_date, item.adjustment): item for item in previous}
+        merged = {} if replace_history else dict(previous_values)
+        for item in fetched:
+            key = (item.trade_date, item.adjustment)
+            old = previous_values.get(key)
+            # 已验证的交易所单日涨跌幅不受前复权历史修订影响。
+            if item.pct_change is None and old is not None and old.pct_change is not None:
+                item = replace(item, pct_change=old.pct_change)
+            merged[key] = item
         order = {"raw": 0, "qfq": 1}
         return sorted(merged.values(), key=lambda item: (item.trade_date, order[item.adjustment]))
 
@@ -378,11 +424,7 @@ class SyncPipeline:
         stock: StockRecord,
         fetched: list[PriceRecord],
     ) -> bool:
-        fetched_qfq = {
-            item.trade_date: item
-            for item in fetched
-            if item.adjustment == "qfq"
-        }
+        fetched_qfq = {item.trade_date: item for item in fetched if item.adjustment == "qfq"}
         if not fetched_qfq:
             return False
         previous = {
@@ -413,24 +455,27 @@ class SyncPipeline:
 
     @staticmethod
     def _persist_prices(session: Session, batch_id: int, records: list[PriceRecord]) -> None:
-        session.add_all(
-            DailyPrice(
-                batch_id=batch_id,
-                market=item.market,
-                stock_code=item.stock_code,
-                trade_date=item.trade_date,
-                adjustment=item.adjustment,
-                open=item.open,
-                high=item.high,
-                low=item.low,
-                close=item.close,
-                volume=item.volume,
-                amount=item.amount,
-                pct_change=item.pct_change,
-                turnover_rate=item.turnover_rate,
-                is_suspended=item.is_suspended,
-            )
-            for item in records
+        session.execute(
+            insert(DailyPrice),
+            [
+                dict(
+                    batch_id=batch_id,
+                    market=item.market,
+                    stock_code=item.stock_code,
+                    trade_date=item.trade_date,
+                    adjustment=item.adjustment,
+                    open=item.open,
+                    high=item.high,
+                    low=item.low,
+                    close=item.close,
+                    volume=item.volume,
+                    amount=item.amount,
+                    pct_change=item.pct_change,
+                    turnover_rate=item.turnover_rate,
+                    is_suspended=item.is_suspended,
+                )
+                for item in records
+            ],
         )
 
     def _calculate_stock(
@@ -455,12 +500,13 @@ class SyncPipeline:
         ]
         snapshots = self.indicators.calculate(bars)
         evaluations = self.signals.evaluate(bars, snapshots, self.rule_version)
+        indicator_rows = []
         for snapshot in snapshots:
             values = asdict(snapshot)
             values.pop("trade_date")
             values["unavailable"] = sorted(values["unavailable"])
-            session.add(
-                DailyIndicator(
+            indicator_rows.append(
+                dict(
                     batch_id=batch.id,
                     market=stock.market,
                     stock_code=stock.stock_code,
@@ -469,6 +515,8 @@ class SyncPipeline:
                     values=values,
                 )
             )
+        if indicator_rows:
+            session.execute(insert(DailyIndicator), indicator_rows)
         signal_store = SQLAlchemySignalStore(session)
         for evaluation in evaluations:
             for rule_code in sorted(evaluation.event_codes):

@@ -1,7 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 
 import { APIError, request, type AlertList, type Dashboard, type SystemStatus } from '../../shared/api/client'
+
+const candidateReasonLabels = new Map([
+  ['BREAKOUT_MA20_WITH_VOLUME', '放量突破20日均线'],
+  ['MA5_ABOVE_MA20', '5日均线高于20日均线'],
+  ['MACD_GOLDEN_CROSS', 'MACD金叉'],
+  ['PRICE_ABOVE_MA20', '收盘价高于20日均线'],
+  ['RSI_IN_CANDIDATE_RANGE', 'RSI处于45～75区间'],
+])
 
 function isStale(tradeDate: string) {
   const elapsed = Date.now() - new Date(`${tradeDate}T15:00:00+08:00`).getTime()
@@ -19,9 +28,18 @@ export function DashboardPage() {
     queryFn: () => request<SystemStatus>('/system/status'),
     refetchInterval: (query) => {
       const value = query.state.data?.latest_sync?.status
-      return value && !['READY', 'FAILED'].includes(value) ? 2000 : false
+      return value && !['READY', 'FAILED'].includes(value) ? 2000 : 10000
     },
   })
+  const previousBatch = useRef<number | null | undefined>(undefined)
+  const activeBatchId = systemStatus.data?.active_batch?.batch_id ?? null
+  useEffect(() => {
+    if (!systemStatus.isSuccess) return
+    if (previousBatch.current !== undefined && previousBatch.current !== activeBatchId) {
+      queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] !== 'system-status' })
+    }
+    previousBatch.current = activeBatchId
+  }, [activeBatchId, systemStatus.isSuccess, queryClient])
   const alerts = useQuery({
     queryKey: ['alerts'],
     queryFn: () => request<AlertList>('/alerts?limit=10&watchlist_only=true'),
@@ -31,7 +49,7 @@ export function DashboardPage() {
     mutationFn: () =>
       request('/sync-jobs', {
         method: 'POST',
-        body: JSON.stringify({ target_trade_date: new Date().toISOString().slice(0, 10) }),
+        body: '{}',
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
@@ -42,6 +60,18 @@ export function DashboardPage() {
     mutationFn: (id: number) => request(`/alerts/${id}/confirm`, { method: 'POST' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['alerts'] }),
   })
+  const latestSync = systemStatus.data?.latest_sync
+  const syncing = sync.isPending || Boolean(latestSync && !['READY', 'FAILED'].includes(latestSync.status))
+  const syncFeedback = <>
+    {sync.isError && <p role="alert">{sync.error.message}</p>}
+    {latestSync && latestSync.status !== 'READY' && <section className={`context-strip ${latestSync.status === 'FAILED' ? 'warning' : ''}`}>
+      <strong>{latestSync.status === 'FAILED' ? '同步失败，可重试' : '正在同步最新交易日'}</strong>
+      <span>阶段 {latestSync.stage}</span>
+      <span>完成 {latestSync.completed_count} / 失败 {latestSync.failed_count}</span>
+      {latestSync.failed_items.length > 0 && <span>失败股票 {latestSync.failed_items.slice(0, 8).join('、')}</span>}
+      {latestSync.error_summary && <span>{latestSync.error_summary}</span>}
+    </section>}
+  </>
 
   if (dashboard.isPending) {
     return <section className="state-card" role="status">正在读取有效数据批次…</section>
@@ -52,9 +82,10 @@ export function DashboardPage() {
         <p className="eyebrow">数据状态</p>
         <h2>尚无有效数据批次</h2>
         <p>同步完成后，这里会展示市场概览、候选股和自选异动。</p>
-        <button type="button" disabled={sync.isPending} onClick={() => sync.mutate()}>
-          {sync.isPending ? '同步中…' : '同步数据'}
+        <button type="button" disabled={syncing} onClick={() => sync.mutate()}>
+          {syncing ? '同步中…' : '同步数据'}
         </button>
+        {syncFeedback}
       </section>
     )
   }
@@ -79,13 +110,19 @@ export function DashboardPage() {
     <div className="page-stack">
       <section className="context-strip">
         <strong>交易日 {data.trade_date}</strong>
+        <span className={data.source?.startsWith('demo') ? 'status-tag warning' : 'muted'}>
+          {data.source?.startsWith('demo') ? '演示数据（非真实行情）' : `行情来源 ${data.source ?? '未标记'}`}
+        </span>
         {isStale(data.trade_date) && <span className="status-tag warning">历史数据</span>}
         {data.risk_acknowledged && <span className="status-tag warning">缺失数据风险已确认</span>}
         <span>批次 #{data.batch_id}</span>
         <span>规则 {data.rule_version}</span>
         <span>完整率 {(data.completeness_rate * 100).toFixed(1)}%</span>
+        <button type="button" disabled={syncing} onClick={() => sync.mutate()}>
+          {syncing ? '同步中…' : '同步最新交易日'}
+        </button>
       </section>
-      {systemStatus.data?.latest_sync && !['READY'].includes(systemStatus.data.latest_sync.status) && <section className={`context-strip ${systemStatus.data.latest_sync.status === 'FAILED' ? 'warning' : ''}`}><strong>同步 {systemStatus.data.latest_sync.status}</strong><span>阶段 {systemStatus.data.latest_sync.stage}</span><span>完成 {systemStatus.data.latest_sync.completed_count} / 失败 {systemStatus.data.latest_sync.failed_count}</span>{systemStatus.data.latest_sync.failed_items.length > 0 && <span>失败股票 {systemStatus.data.latest_sync.failed_items.slice(0, 8).join('、')}</span>}{systemStatus.data.latest_sync.error_summary && <span>{systemStatus.data.latest_sync.error_summary}</span>}</section>}
+      {syncFeedback}
       <section className="metric-grid" aria-label="主要指数">
         {(data.indices ?? []).map((item) => <article key={item.index_code}><span>{indexNames[item.index_code] ?? item.index_code}</span><strong>{item.close.toFixed(2)}</strong><small className={(item.pct_change ?? 0) >= 0 ? 'rise' : 'fall'}>{item.pct_change == null ? '--' : `${item.pct_change.toFixed(2)}%`}</small>{item.trade_date !== data.trade_date && <small className="muted">旧数据 {item.trade_date}</small>}</article>)}
       </section>
@@ -99,7 +136,7 @@ export function DashboardPage() {
         <div className="panel-title"><div><p className="eyebrow">默认策略</p><h2>交易日候选股</h2></div><Link to="/screener">调整筛选</Link></div>
         {data.candidates.length === 0 ? <p className="muted">当前批次没有命中默认条件的股票。</p> : (
           <div className="table-wrap"><table><thead><tr><th>股票</th><th>得分</th><th>命中原因</th></tr></thead><tbody>
-            {data.candidates.map((item) => <tr key={`${item.market}${item.stock_code}`}><td><Link to={`/stocks/${item.market}/${item.stock_code}`}>{item.stock_code}</Link><small>{item.market}</small></td><td>{item.score.toFixed(1)}</td><td>{item.reasons.join(' / ')}</td></tr>)}
+            {data.candidates.map((item) => <tr key={`${item.market}${item.stock_code}`}><td><Link to={`/stocks/${item.market}/${item.stock_code}`}>{item.stock_code}</Link><small>{item.stock_name || '名称暂缺'} · {item.market}</small></td><td>{item.score.toFixed(1)}</td><td>{item.reasons.map((reason) => candidateReasonLabels.get(reason) ?? reason).join(' / ')}</td></tr>)}
           </tbody></table></div>
         )}
       </section>

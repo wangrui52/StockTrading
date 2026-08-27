@@ -1,11 +1,11 @@
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.application.sync_pipeline import SyncResult
+from app.application.sync_pipeline import SyncInProgressError, SyncResult
 from app.infrastructure.models import SyncJob, SystemSetting
 
 
@@ -34,14 +34,52 @@ class DailySyncScheduler:
             if local_now.strftime("%H:%M") < scheduled:
                 return False
             existing = session.scalar(
-                select(SyncJob.id).where(
+                select(SyncJob)
+                .where(
                     SyncJob.job_type == "AUTO",
                     SyncJob.target_trade_date == target,
                 )
+                .order_by(SyncJob.id.desc())
             )
-            if existing is not None:
+            if existing is not None and (
+                existing.status != "FAILED"
+                or (
+                    existing.finished_at
+                    and local_now.replace(tzinfo=None)
+                    - existing.finished_at.replace(tzinfo=UTC)
+                    .astimezone(ZoneInfo("Asia/Shanghai"))
+                    .replace(tzinfo=None)
+                    < timedelta(minutes=5)
+                )
+            ):
                 return False
-        if not self.is_trade_date(target):
+        try:
+            if not self.is_trade_date(target):
+                return False
+            self.run_sync(target, job_type="AUTO")
+            return True
+        except SyncInProgressError:
             return False
-        self.run_sync(target, job_type="AUTO")
-        return True
+        except Exception as error:
+            with self.session_factory() as session:
+                latest = session.scalar(
+                    select(SyncJob)
+                    .where(
+                        SyncJob.job_type == "AUTO",
+                        SyncJob.target_trade_date == target,
+                    )
+                    .order_by(SyncJob.id.desc())
+                )
+                if latest is None or latest.status != "FAILED":
+                    session.add(
+                        SyncJob(
+                            job_type="AUTO",
+                            target_trade_date=target,
+                            status="FAILED",
+                            stage="CALENDAR",
+                            error_summary=str(error)[:300],
+                            finished_at=now,
+                        )
+                    )
+                    session.commit()
+            return False

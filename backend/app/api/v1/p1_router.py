@@ -319,7 +319,7 @@ def _settings(db: SessionDep) -> dict[str, Any]:
     defaults = {
         "auto_sync_enabled": True,
         "auto_sync_time": "18:30",
-        "adapter_version": "akshare-1.18.94",
+        "adapter_version": batch.source if batch else "tencent-sina-v1",
         "current_rule_version": batch.rule_version if batch else "v1",
         "indicator_parameters": {"rsi_period": 14, "boll_period": 20},
         "last_successful_batch": batch.trade_date if batch else None,

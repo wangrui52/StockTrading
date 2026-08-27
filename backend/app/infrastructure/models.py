@@ -73,6 +73,7 @@ class DataBatch(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(64), default="unknown")
     trade_date: Mapped[date] = mapped_column(Date, index=True)
     status: Mapped[str] = mapped_column(String(16), default="BUILDING")
     completeness_rate: Mapped[float] = mapped_column(Float, default=0.0)
@@ -147,7 +148,15 @@ class DailyIndicator(Base):
 class SignalEvent(Base):
     __tablename__ = "signal_event"
     __table_args__ = (
-        UniqueConstraint("market", "stock_code", "trade_date", "rule_code", "rule_version"),
+        UniqueConstraint(
+            "batch_id",
+            "market",
+            "stock_code",
+            "trade_date",
+            "rule_code",
+            "rule_version",
+            name="uq_signal_batch_event",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

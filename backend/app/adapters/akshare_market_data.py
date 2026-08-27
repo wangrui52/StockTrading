@@ -1,5 +1,6 @@
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from app.ports.market_data import IndexRecord, MarketDataUnavailable, PriceRecord, StockRecord
 
@@ -14,13 +15,35 @@ class AkShareMarketDataGateway:
             client = akshare
         self.client = client
         self.adapter_version = f"akshare-{getattr(client, '__version__', 'unknown')}"
+        self._calendar_day: date | None = None
+        self._calendar: set[date] = set()
+
+    def _trade_dates(self) -> set[date]:
+        today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+        if self._calendar_day != today:
+            try:
+                frame = self.client.tool_trade_date_hist_sina()
+                values = {self._date(item) for item in frame["trade_date"].tolist()}
+                if not values:
+                    raise ValueError("交易日历为空")
+                self._calendar, self._calendar_day = values, today
+            except Exception as error:
+                raise MarketDataUnavailable("AkShare 交易日历获取失败") from error
+        return self._calendar
+
+    def latest_trade_date(self, now: datetime | None = None) -> date:
+        local = (now or datetime.now(UTC)).astimezone(ZoneInfo("Asia/Shanghai"))
+        cutoff = local.date() if local.time() >= time(15) else local.date() - timedelta(days=1)
+        dates = self._trade_dates()
+        if max(dates) < cutoff:
+            raise MarketDataUnavailable("交易日历已过期，不能确认最新交易日")
+        eligible = [value for value in dates if value <= cutoff]
+        if not eligible:
+            raise MarketDataUnavailable("没有已收盘交易日")
+        return max(eligible)
 
     def is_trade_date(self, value: date) -> bool:
-        try:
-            frame = self.client.tool_trade_date_hist_sina()
-            return value in {self._date(item) for item in frame["trade_date"].tolist()}
-        except Exception as error:
-            raise MarketDataUnavailable("AkShare 交易日历获取失败") from error
+        return value in self._trade_dates()
 
     def list_stocks(self) -> list[StockRecord]:
         try:

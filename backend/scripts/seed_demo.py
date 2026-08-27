@@ -85,7 +85,11 @@ def main() -> None:
     result = SyncPipeline(
         factory,
         FakeMarketDataGateway(
-            open_dates={target}, stocks=stocks, histories=histories, indices=indices
+            open_dates={target},
+            stocks=stocks,
+            histories=histories,
+            indices=indices,
+            adapter_version="demo-v1",
         ),
     ).run(target)
     with factory() as session:

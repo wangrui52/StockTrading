@@ -7,12 +7,18 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.adapters.akshare_market_data import AkShareMarketDataGateway
+from app.adapters.tencent_market_data import TencentMarketDataGateway
 from app.api.v1.p1_router import router as p1_router
 from app.api.v1.router import APIError, router
-from app.application.sync_pipeline import NonTradingDayError, SyncPipeline, SyncResult
+from app.application.sync_pipeline import (
+    NonTradingDayError,
+    SyncInProgressError,
+    SyncPipeline,
+    SyncResult,
+)
 from app.infrastructure.database import create_sqlite_session_factory
 from app.infrastructure.models import DataBatch, SyncJob
+from app.ports.market_data import MarketDataUnavailable
 
 
 def recover_interrupted_jobs(factory: sessionmaker[Session]) -> None:
@@ -57,8 +63,10 @@ def create_app(
     factory = session_factory or create_sqlite_session_factory()
     recover_interrupted_jobs(factory)
     application.state.session_factory = factory
+    gateway = TencentMarketDataGateway()
+    application.state.latest_trade_date = gateway.latest_trade_date
     if sync_runner is None:
-        pipeline = SyncPipeline(factory, AkShareMarketDataGateway())
+        pipeline = SyncPipeline(factory, gateway, fetch_workers=4)
         application.state.sync_runner = pipeline.run
         application.state.sync_prepare = pipeline.prepare
         application.state.sync_execute = pipeline.execute_prepared
@@ -68,6 +76,26 @@ def create_app(
         application.state.sync_execute = None
     application.include_router(router)
     application.include_router(p1_router)
+
+    @application.exception_handler(MarketDataUnavailable)
+    def market_data_error(_request: Request, error: MarketDataUnavailable) -> JSONResponse:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": {
+                    "code": "MARKET_DATA_UNAVAILABLE",
+                    "message": str(error),
+                    "details": None,
+                }
+            },
+        )
+
+    @application.exception_handler(SyncInProgressError)
+    def sync_busy(_request: Request, error: SyncInProgressError) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={"error": {"code": "SYNC_IN_PROGRESS", "message": str(error), "details": None}},
+        )
 
     @application.exception_handler(APIError)
     def api_error(_request: Request, error: APIError) -> JSONResponse:

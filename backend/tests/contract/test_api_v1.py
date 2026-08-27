@@ -26,6 +26,73 @@ from app.infrastructure.models import (
 from app.main import create_app
 
 
+def test_sync_without_date_uses_backend_latest_closed_trade_date(session_factory):
+    calls = []
+    application = create_app(
+        session_factory=session_factory,
+        sync_runner=lambda target: calls.append(target) or SyncResult(3, 4),
+    )
+    application.state.latest_trade_date = lambda: date(2026, 8, 27)
+    response = TestClient(application).post("/api/v1/sync-jobs", json={})
+    assert response.status_code == 201
+    assert calls == [date(2026, 8, 27)]
+
+
+def test_source_failure_returns_actionable_api_error(session_factory):
+    from app.ports.market_data import MarketDataUnavailable
+
+    def fail():
+        raise MarketDataUnavailable("交易日历暂时不可用")
+
+    application = create_app(session_factory=session_factory)
+    application.state.latest_trade_date = fail
+    response = TestClient(application).post("/api/v1/sync-jobs", json={})
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "MARKET_DATA_UNAVAILABLE"
+
+
+def test_sync_busy_is_actionable_and_failed_batch_signals_are_hidden(session_factory):
+    from app.application.sync_pipeline import SyncInProgressError
+
+    def busy(target):
+        raise SyncInProgressError("已有同步任务")
+
+    client = TestClient(create_app(session_factory=session_factory, sync_runner=busy))
+    response = client.post("/api/v1/sync-jobs", json={"target_trade_date": "2026-08-27"})
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "SYNC_IN_PROGRESS"
+    with session_factory() as session:
+        batch = DataBatch(
+            trade_date=date(2025, 3, 31),
+            status="FAILED",
+            completeness_rate=0.5,
+            rule_version="v1",
+            is_active=False,
+        )
+        session.add(batch)
+        session.flush()
+        event = SignalEvent(
+            batch_id=batch.id,
+            market="SH",
+            stock_code="600000",
+            trade_date=batch.trade_date,
+            rule_code="FAKE",
+            rule_version="v1",
+            payload={},
+        )
+        session.add(event)
+        session.commit()
+        event_id = event.id
+    alerts = client.get("/api/v1/alerts").json()["items"]
+    assert all(item["rule_code"] != "FAKE" for item in alerts)
+    assert client.post(f"/api/v1/alerts/{event_id}/confirm").status_code == 404
+    report = client.post("/api/v1/reports", json={"market": "SH", "stock_code": "600000"})
+    assert "FAKE" not in report.json()["content"]
+    screened = client.post("/api/v1/screenings", json={"macd_filters": ["FAKE"]})
+    assert screened.status_code == 200
+    assert screened.json()["items"] == []
+
+
 @pytest.fixture
 def session_factory() -> Generator[sessionmaker[Session]]:
     factory = create_sqlite_memory_session_factory()
@@ -116,6 +183,33 @@ def assert_context(payload: dict[str, object]) -> None:
     assert payload["trade_date"] == "2025-03-31"
     assert payload["batch_id"] == 1
     assert payload["rule_version"] == "v1"
+
+
+def test_dashboard_candidate_names_match_market_and_keep_missing_stocks(
+    client: TestClient, session_factory: sessionmaker[Session]
+) -> None:
+    with session_factory() as session:
+        session.add(StockBasic(market="SZ", stock_code="600000", stock_name="同码测试股票"))
+        session.add_all([
+            CandidateResult(
+                batch_id=1, market="SZ", stock_code="600000", score=4, reasons=[]
+            ),
+            CandidateResult(
+                batch_id=1, market="SH", stock_code="999999", score=4, reasons=[]
+            ),
+        ])
+        session.commit()
+
+    response = client.get("/api/v1/dashboard")
+    assert response.status_code == 200
+    items = response.json()["candidates"]
+    assert len(items) == 3
+    names = {(item["market"], item["stock_code"]): item["stock_name"] for item in items}
+    assert names == {
+        ("SH", "600000"): "浦发银行",
+        ("SZ", "600000"): "同码测试股票",
+        ("SH", "999999"): None,
+    }
 
 
 def test_status_dashboard_and_stock_queries_share_active_context(

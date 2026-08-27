@@ -45,6 +45,7 @@ class SQLAlchemySignalStore:
     ) -> SignalEvent:
         existing = self.session.scalar(
             select(SignalEvent).where(
+                SignalEvent.batch_id == batch_id,
                 SignalEvent.market == market,
                 SignalEvent.stock_code == stock_code,
                 SignalEvent.trade_date == trade_date,
@@ -65,7 +66,35 @@ class SQLAlchemySignalStore:
         )
         self.session.add(signal)
         self.session.flush()
-        self.session.add(AlertEventState(signal_event_id=signal.id, status="TRIGGERED"))
+        batch = self.session.get(DataBatch, batch_id)
+        confirmed = (
+            self.session.scalar(
+                select(AlertEventState)
+                .join(SignalEvent, SignalEvent.id == AlertEventState.signal_event_id)
+                .join(DataBatch, DataBatch.id == SignalEvent.batch_id)
+                .where(
+                    DataBatch.source == batch.source,
+                    DataBatch.status.in_(("READY", "READY_WITH_GAPS")),
+                    DataBatch.id != batch_id,
+                    SignalEvent.market == market,
+                    SignalEvent.stock_code == stock_code,
+                    SignalEvent.trade_date == trade_date,
+                    SignalEvent.rule_code == rule_code,
+                    SignalEvent.rule_version == rule_version,
+                    AlertEventState.status == "CONFIRMED",
+                )
+                .order_by(DataBatch.id.desc())
+            )
+            if batch is not None
+            else None
+        )
+        self.session.add(
+            AlertEventState(
+                signal_event_id=signal.id,
+                status="CONFIRMED" if confirmed else "TRIGGERED",
+                confirmed_at=confirmed.confirmed_at if confirmed else None,
+            )
+        )
         self.session.flush()
         return signal
 
