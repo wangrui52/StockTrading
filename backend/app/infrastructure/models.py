@@ -22,6 +22,31 @@ class Base(DeclarativeBase):
     pass
 
 
+class RealtimeRefresh(Base):
+    __tablename__ = "realtime_refresh"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    scope: Mapped[str] = mapped_column(String(16), default="market", index=True)
+    requested_symbols: Mapped[list[str]] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(16), default="FETCHING")
+    stage: Mapped[str] = mapped_column(String(16), default="STOCKS")
+    total_count: Mapped[int] = mapped_column(Integer, default=0)
+    completed_count: Mapped[int] = mapped_column(Integer, default=0)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0)
+    error_summary: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RealtimeSnapshot(Base):
+    __tablename__ = "realtime_snapshot"
+
+    # id=1 全市场、id=2 自选股；分别原子替换，不向日线批次写入盘中数据。
+    id: Mapped[int] = mapped_column(primary_key=True)
+    summary: Mapped[dict[str, Any]] = mapped_column(JSON)
+    quotes: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
+
+
 class StockBasic(Base):
     __tablename__ = "stock_basic"
     __table_args__ = (UniqueConstraint("market", "stock_code"),)
@@ -193,6 +218,92 @@ class CandidateResult(Base):
     positive_event_count: Mapped[int] = mapped_column(Integer, default=0)
     volume_ratio: Mapped[float | None] = mapped_column(Float)
     pct_change: Mapped[float | None] = mapped_column(Float)
+
+
+class CandidateOutcome(Base):
+    __tablename__ = "candidate_outcome"
+    __table_args__ = (
+        UniqueConstraint(
+            "candidate_result_id",
+            "horizon_trading_days",
+            "calculation_version",
+            "outcome_run_id",
+            name="uq_candidate_outcome_snapshot",
+        ),
+        Index(
+            "ix_candidate_outcome_rule_horizon_date_status",
+            "rule_version",
+            "horizon_trading_days",
+            "source_trade_date",
+            "status",
+        ),
+        Index(
+            "ix_candidate_outcome_window",
+            "calculation_version",
+            "rule_version",
+            "source_trade_date",
+        ),
+        Index(
+            "ix_candidate_outcome_snapshot",
+            "outcome_run_id",
+            "calculation_version",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    candidate_result_id: Mapped[int] = mapped_column(ForeignKey("candidate_result.id"))
+    source_batch_id: Mapped[int] = mapped_column(ForeignKey("data_batch.id"))
+    evaluation_batch_id: Mapped[int | None] = mapped_column(ForeignKey("data_batch.id"))
+    outcome_run_id: Mapped[int | None] = mapped_column(ForeignKey("outcome_run.id"))
+    source_trade_date: Mapped[date] = mapped_column(Date)
+    rule_version: Mapped[str] = mapped_column(String(32))
+    horizon_trading_days: Mapped[int] = mapped_column(Integer)
+    reference_trade_date: Mapped[date | None] = mapped_column(Date)
+    evaluation_trade_date: Mapped[date | None] = mapped_column(Date)
+    expected_evaluation_trade_date: Mapped[date | None] = mapped_column(Date)
+    reference_price: Mapped[float | None] = mapped_column(Float)
+    evaluation_price: Mapped[float | None] = mapped_column(Float)
+    return_rate: Mapped[float | None] = mapped_column(Float)
+    mfe: Mapped[float | None] = mapped_column(Float)
+    mae: Mapped[float | None] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String(16), default="PENDING")
+    unavailable_reason: Mapped[str | None] = mapped_column(String(64))
+    calculation_version: Mapped[str] = mapped_column(String(32), default="outcome-v1")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
+class OutcomeRun(Base):
+    __tablename__ = "outcome_run"
+    __table_args__ = (
+        UniqueConstraint(
+            "evaluation_batch_id",
+            "calculation_version",
+            "rule_version",
+            "attempt_no",
+            name="uq_outcome_run_batch_version",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    evaluation_batch_id: Mapped[int] = mapped_column(ForeignKey("data_batch.id"))
+    calculation_version: Mapped[str] = mapped_column(String(32), default="outcome-v1")
+    rule_version: Mapped[str] = mapped_column(String(32))
+    attempt_no: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(16), default="PENDING")
+    expected_count: Mapped[int] = mapped_column(Integer, default=0)
+    completed_count: Mapped[int] = mapped_column(Integer, default=0)
+    unavailable_count: Mapped[int] = mapped_column(Integer, default=0)
+    pending_count: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_summary: Mapped[str | None] = mapped_column(Text)
 
 
 class WatchlistGroup(Base):

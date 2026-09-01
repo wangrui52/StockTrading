@@ -1,7 +1,7 @@
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class HealthResponse(BaseModel):
@@ -55,6 +55,9 @@ class CandidateItem(BaseModel):
     close: float | None = None
     pct_change: float | None = None
     rsi14: float | None = None
+    outcome_status: Literal["PENDING", "PARTIAL", "COMPLETED", "UNAVAILABLE"] = (
+        "PENDING"
+    )
 
 
 class MarketSummary(BaseModel):
@@ -92,6 +95,25 @@ class PriceItem(BaseModel):
     is_suspended: bool
 
 
+class StockCandidateOutcomeItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    horizon_trading_days: int
+    status: Literal["PENDING", "COMPLETED", "UNAVAILABLE"]
+    reference_trade_date: date | None
+    evaluation_trade_date: date | None
+    expected_evaluation_trade_date: date | None = Field(
+        description="由完整权威交易日历确定的预计评价日；不代表评价已完成"
+    )
+    reference_price: float | None
+    evaluation_price: float | None
+    return_rate: float | None
+    mfe: float | None
+    mae: float | None
+    unavailable_reason: str | None
+    calculation_version: str
+
+
 class StockDetailResponse(BatchContext):
     market: str
     stock_code: str
@@ -101,6 +123,7 @@ class StockDetailResponse(BatchContext):
     trend: str
     risk_level: str
     risk_reasons: list[str]
+    candidate_outcomes: list[StockCandidateOutcomeItem]
 
 
 class PriceSeriesResponse(BatchContext):
@@ -131,6 +154,17 @@ class ScreeningResponse(BatchContext):
     page_size: int
 
 
+class RealtimeQuoteResponse(BaseModel):
+    market: str
+    stock_code: str
+    stock_name: str
+    latest_price: float | None
+    pct_change: float | None
+    volume: int
+    amount: float
+    quoted_at: datetime
+
+
 class WatchlistItemResponse(BaseModel):
     id: int
     group_id: int
@@ -145,6 +179,7 @@ class WatchlistItemResponse(BaseModel):
     signal_codes: list[str] = []
     risk_level: str | None = None
     alert_status: str = "UNTRIGGERED"
+    realtime: RealtimeQuoteResponse | None = None
 
 
 class WatchlistResponse(BaseModel):
@@ -182,3 +217,106 @@ class ReportResponse(BatchContext):
     template_version: str
     report_version: int
     content: str
+
+
+class StrategyOutcomeFilters(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    rule_version: str | None
+    latest_trading_days: int | None
+    horizon: int | None
+    date_from: date | None
+    date_to: date | None
+    status: str | None
+
+
+class StrategyOutcomeView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    candidate_result_id: int
+    market: str
+    stock_code: str
+    stock_name: str | None
+    source_batch_id: int
+    evaluation_batch_id: int | None
+    source_trade_date: date
+    rule_version: str
+    horizon_trading_days: int
+    reference_trade_date: date | None
+    evaluation_trade_date: date | None
+    expected_evaluation_trade_date: date | None = Field(
+        description="由完整权威交易日历确定的预计评价日；不代表评价已完成"
+    )
+    reference_price: float | None
+    evaluation_price: float | None
+    return_rate: float | None
+    mfe: float | None
+    mae: float | None
+    status: str
+    unavailable_reason: str | None
+    calculation_version: str
+    updated_at: datetime
+
+
+class StrategyOutcomePage(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    items: list[StrategyOutcomeView]
+    total: int
+    page: int
+    page_size: int
+    calculation_version: str
+    filters: StrategyOutcomeFilters
+    data_date: date | None
+
+
+class StrategyOutcomeSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    total: int
+    completed: int
+    unavailable: int
+    pending: int
+    sample_size: int
+    completion_rate: float
+    mean_return_rate: float | None
+    median_return_rate: float | None
+    positive_return_ratio: float | None
+    mean_mfe: float | None
+    mean_mae: float | None
+    max_drawdown_approx: float | None = Field(
+        description=(
+            "COMPLETED 样本持有窗口 MAE 的最差值（最小值，负百分数）；"
+            "仅为样本级近似，不是资金曲线最大回撤"
+        )
+    )
+    insufficient_sample: bool
+    calculation_version: str
+    filters: StrategyOutcomeFilters
+    data_date: date | None
+
+
+class CandidateOutcomes(BaseModel):
+    items: list[StrategyOutcomeView]
+    calculation_version: str
+
+
+class OutcomeRunCreateRequest(BaseModel):
+    evaluation_batch_id: int = Field(gt=0)
+
+
+class OutcomeRunResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    evaluation_batch_id: int
+    calculation_version: str
+    status: str
+    expected_count: int
+    completed_count: int
+    unavailable_count: int
+    pending_count: int
+    started_at: datetime
+    finished_at: datetime | None
+    error_summary: str | None

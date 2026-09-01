@@ -522,6 +522,142 @@ export interface paths {
         patch: operations["update_settings_api_v1_settings_patch"];
         trace?: never;
     };
+    "/api/v1/realtime/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh */
+        post: operations["refresh_api_v1_realtime_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/realtime/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_api_v1_realtime_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/realtime/quotes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Quotes */
+        get: operations["quotes_api_v1_realtime_quotes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/strategy/outcomes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Outcomes */
+        get: operations["list_outcomes_api_v1_strategy_outcomes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/strategy/outcomes/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Summarize Outcomes */
+        get: operations["summarize_outcomes_api_v1_strategy_outcomes_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/strategy/outcomes/{candidate_result_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Candidate Outcomes */
+        get: operations["candidate_outcomes_api_v1_strategy_outcomes__candidate_result_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/strategy/outcome-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Outcome Run */
+        post: operations["create_outcome_run_api_v1_strategy_outcome_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/strategy/outcome-runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Outcome Run */
+        get: operations["get_outcome_run_api_v1_strategy_outcome_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -696,6 +832,19 @@ export interface components {
             pct_change?: number | null;
             /** Rsi14 */
             rsi14?: number | null;
+            /**
+             * Outcome Status
+             * @default PENDING
+             * @enum {string}
+             */
+            outcome_status: "PENDING" | "PARTIAL" | "COMPLETED" | "UNAVAILABLE";
+        };
+        /** CandidateOutcomes */
+        CandidateOutcomes: {
+            /** Items */
+            items: components["schemas"]["StrategyOutcomeView"][];
+            /** Calculation Version */
+            calculation_version: string;
         };
         /** DashboardResponse */
         DashboardResponse: {
@@ -841,6 +990,39 @@ export interface components {
             /** Content */
             content: string;
         };
+        /** OutcomeRunCreateRequest */
+        OutcomeRunCreateRequest: {
+            /** Evaluation Batch Id */
+            evaluation_batch_id: number;
+        };
+        /** OutcomeRunResponse */
+        OutcomeRunResponse: {
+            /** Id */
+            id: number;
+            /** Evaluation Batch Id */
+            evaluation_batch_id: number;
+            /** Calculation Version */
+            calculation_version: string;
+            /** Status */
+            status: string;
+            /** Expected Count */
+            expected_count: number;
+            /** Completed Count */
+            completed_count: number;
+            /** Unavailable Count */
+            unavailable_count: number;
+            /** Pending Count */
+            pending_count: number;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Finished At */
+            finished_at: string | null;
+            /** Error Summary */
+            error_summary: string | null;
+        };
         /** PresetList */
         PresetList: {
             /** Items */
@@ -937,6 +1119,121 @@ export interface components {
             risk_acknowledged: boolean;
             /** Items */
             items: components["schemas"]["PriceItem"][];
+        };
+        /** RealtimeJobResponse */
+        RealtimeJobResponse: {
+            /** Id */
+            id: number;
+            /**
+             * Scope
+             * @default market
+             * @enum {string}
+             */
+            scope: "market" | "watchlist";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "FETCHING" | "READY" | "PARTIAL" | "FAILED";
+            /** Stage */
+            stage: string;
+            /** Total Count */
+            total_count: number;
+            /** Completed Count */
+            completed_count: number;
+            /** Failed Count */
+            failed_count: number;
+            /** Error Summary */
+            error_summary: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Finished At */
+            finished_at: string | null;
+        };
+        /** RealtimeQuoteResponse */
+        RealtimeQuoteResponse: {
+            /** Market */
+            market: string;
+            /** Stock Code */
+            stock_code: string;
+            /** Stock Name */
+            stock_name: string;
+            /** Latest Price */
+            latest_price: number | null;
+            /** Pct Change */
+            pct_change: number | null;
+            /** Volume */
+            volume: number;
+            /** Amount */
+            amount: number;
+            /**
+             * Quoted At
+             * Format: date-time
+             */
+            quoted_at: string;
+        };
+        /** RealtimeQuotesResponse */
+        RealtimeQuotesResponse: {
+            snapshot: components["schemas"]["RealtimeSnapshotResponse"] | null;
+            /** Items */
+            items: components["schemas"]["RealtimeQuoteResponse"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /** RealtimeSnapshotResponse */
+        RealtimeSnapshotResponse: {
+            /** Refresh Id */
+            refresh_id: number;
+            /**
+             * Scope
+             * @default market
+             * @enum {string}
+             */
+            scope: "market" | "watchlist";
+            /** Source */
+            source: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Finished At
+             * Format: date-time
+             */
+            finished_at: string;
+            /**
+             * Quote Date
+             * Format: date
+             */
+            quote_date: string;
+            /** Total Count */
+            total_count: number;
+            /** Received Count */
+            received_count: number;
+            /** Missing Count */
+            missing_count: number;
+            /** Missing Symbols */
+            missing_symbols: string[];
+            /** Stale Count */
+            stale_count: number;
+            /** Unavailable Count */
+            unavailable_count: number;
+            market_summary: components["schemas"]["MarketSummary"];
+        };
+        /** RealtimeStatusResponse */
+        RealtimeStatusResponse: {
+            job: components["schemas"]["RealtimeJobResponse"] | null;
+            snapshot: components["schemas"]["RealtimeSnapshotResponse"] | null;
+            /** Cooldown Until */
+            cooldown_until: string | null;
         };
         /** ReportRequest */
         ReportRequest: {
@@ -1150,6 +1447,39 @@ export interface components {
             /** Items */
             items: components["schemas"]["SignalItem"][];
         };
+        /** StockCandidateOutcomeItem */
+        StockCandidateOutcomeItem: {
+            /** Horizon Trading Days */
+            horizon_trading_days: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "PENDING" | "COMPLETED" | "UNAVAILABLE";
+            /** Reference Trade Date */
+            reference_trade_date: string | null;
+            /** Evaluation Trade Date */
+            evaluation_trade_date: string | null;
+            /**
+             * Expected Evaluation Trade Date
+             * @description 由完整权威交易日历确定的预计评价日；不代表评价已完成
+             */
+            expected_evaluation_trade_date: string | null;
+            /** Reference Price */
+            reference_price: number | null;
+            /** Evaluation Price */
+            evaluation_price: number | null;
+            /** Return Rate */
+            return_rate: number | null;
+            /** Mfe */
+            mfe: number | null;
+            /** Mae */
+            mae: number | null;
+            /** Unavailable Reason */
+            unavailable_reason: string | null;
+            /** Calculation Version */
+            calculation_version: string;
+        };
         /** StockDetailResponse */
         StockDetailResponse: {
             /**
@@ -1185,6 +1515,132 @@ export interface components {
             risk_level: string;
             /** Risk Reasons */
             risk_reasons: string[];
+            /** Candidate Outcomes */
+            candidate_outcomes: components["schemas"]["StockCandidateOutcomeItem"][];
+        };
+        /** StrategyOutcomeFilters */
+        StrategyOutcomeFilters: {
+            /** Rule Version */
+            rule_version: string | null;
+            /** Latest Trading Days */
+            latest_trading_days: number | null;
+            /** Horizon */
+            horizon: number | null;
+            /** Date From */
+            date_from: string | null;
+            /** Date To */
+            date_to: string | null;
+            /** Status */
+            status: string | null;
+        };
+        /** StrategyOutcomePage */
+        StrategyOutcomePage: {
+            /** Items */
+            items: components["schemas"]["StrategyOutcomeView"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Calculation Version */
+            calculation_version: string;
+            filters: components["schemas"]["StrategyOutcomeFilters"];
+            /** Data Date */
+            data_date: string | null;
+        };
+        /** StrategyOutcomeSummary */
+        StrategyOutcomeSummary: {
+            /** Total */
+            total: number;
+            /** Completed */
+            completed: number;
+            /** Unavailable */
+            unavailable: number;
+            /** Pending */
+            pending: number;
+            /** Sample Size */
+            sample_size: number;
+            /** Completion Rate */
+            completion_rate: number;
+            /** Mean Return Rate */
+            mean_return_rate: number | null;
+            /** Median Return Rate */
+            median_return_rate: number | null;
+            /** Positive Return Ratio */
+            positive_return_ratio: number | null;
+            /** Mean Mfe */
+            mean_mfe: number | null;
+            /** Mean Mae */
+            mean_mae: number | null;
+            /**
+             * Max Drawdown Approx
+             * @description COMPLETED 样本持有窗口 MAE 的最差值（最小值，负百分数）；仅为样本级近似，不是资金曲线最大回撤
+             */
+            max_drawdown_approx: number | null;
+            /** Insufficient Sample */
+            insufficient_sample: boolean;
+            /** Calculation Version */
+            calculation_version: string;
+            filters: components["schemas"]["StrategyOutcomeFilters"];
+            /** Data Date */
+            data_date: string | null;
+        };
+        /** StrategyOutcomeView */
+        StrategyOutcomeView: {
+            /** Id */
+            id: number;
+            /** Candidate Result Id */
+            candidate_result_id: number;
+            /** Market */
+            market: string;
+            /** Stock Code */
+            stock_code: string;
+            /** Stock Name */
+            stock_name: string | null;
+            /** Source Batch Id */
+            source_batch_id: number;
+            /** Evaluation Batch Id */
+            evaluation_batch_id: number | null;
+            /**
+             * Source Trade Date
+             * Format: date
+             */
+            source_trade_date: string;
+            /** Rule Version */
+            rule_version: string;
+            /** Horizon Trading Days */
+            horizon_trading_days: number;
+            /** Reference Trade Date */
+            reference_trade_date: string | null;
+            /** Evaluation Trade Date */
+            evaluation_trade_date: string | null;
+            /**
+             * Expected Evaluation Trade Date
+             * @description 由完整权威交易日历确定的预计评价日；不代表评价已完成
+             */
+            expected_evaluation_trade_date: string | null;
+            /** Reference Price */
+            reference_price: number | null;
+            /** Evaluation Price */
+            evaluation_price: number | null;
+            /** Return Rate */
+            return_rate: number | null;
+            /** Mfe */
+            mfe: number | null;
+            /** Mae */
+            mae: number | null;
+            /** Status */
+            status: string;
+            /** Unavailable Reason */
+            unavailable_reason: string | null;
+            /** Calculation Version */
+            calculation_version: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /** SyncCreatedResponse */
         SyncCreatedResponse: {
@@ -1287,6 +1743,7 @@ export interface components {
              * @default UNTRIGGERED
              */
             alert_status: string;
+            realtime?: components["schemas"]["RealtimeQuoteResponse"] | null;
         };
         /** WatchlistRequest */
         WatchlistRequest: {
@@ -2434,6 +2891,271 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_api_v1_realtime_refresh_post: {
+        parameters: {
+            query?: {
+                scope?: "market" | "watchlist";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RealtimeJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    status_api_v1_realtime_status_get: {
+        parameters: {
+            query?: {
+                scope?: "market" | "watchlist";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RealtimeStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quotes_api_v1_realtime_quotes_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                page?: number;
+                page_size?: number;
+                scope?: "market" | "watchlist";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RealtimeQuotesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_outcomes_api_v1_strategy_outcomes_get: {
+        parameters: {
+            query?: {
+                rule_version?: string | null;
+                latest_trading_days?: number | null;
+                horizon?: number | null;
+                date_from?: string | null;
+                date_to?: string | null;
+                status?: ("PENDING" | "COMPLETED" | "UNAVAILABLE") | null;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyOutcomePage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    summarize_outcomes_api_v1_strategy_outcomes_summary_get: {
+        parameters: {
+            query?: {
+                rule_version?: string | null;
+                latest_trading_days?: number | null;
+                horizon?: number | null;
+                date_from?: string | null;
+                date_to?: string | null;
+                status?: ("PENDING" | "COMPLETED" | "UNAVAILABLE") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyOutcomeSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    candidate_outcomes_api_v1_strategy_outcomes__candidate_result_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_result_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateOutcomes"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_outcome_run_api_v1_strategy_outcome_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutcomeRunCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutcomeRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_outcome_run_api_v1_strategy_outcome_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutcomeRunResponse"];
                 };
             };
             /** @description Validation Error */

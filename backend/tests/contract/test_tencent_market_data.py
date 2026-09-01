@@ -152,3 +152,93 @@ def test_default_calendar_network_is_bounded():
     with pytest.raises(MarketDataUnavailable):
         TencentMarketDataGateway(get=get).latest_trade_date()
     assert calls == [15]
+
+
+def realtime_line(symbol, *, price="12.34", stamp="20260828110830", volume="1234"):
+    fields = [""] * 58
+    fields[1:7] = ["测试股票", symbol[2:], price, "12", "12.1", volume]
+    fields[30], fields[32], fields[37], fields[57] = stamp, "2.83", "15", "15.1234"
+    return f'v_{symbol}="{"~".join(fields)}";'
+
+
+@pytest.mark.parametrize(
+    "symbol,volume",
+    [
+        ("sh600000", 123400),
+        ("sz000001", 123400),
+        ("sh688981", 1234),
+        ("sh689009", 1234),
+        ("bj920001", 123400),
+    ],
+)
+def test_realtime_uses_source_timestamp_and_normalizes_units(symbol, volume):
+    from app.adapters.tencent_realtime import TencentRealtimeGateway
+
+    class QuoteResponse:
+        text = realtime_line(symbol)
+
+        def raise_for_status(self):
+            pass
+
+    def get(url, *, params, timeout):
+        assert params == {"q": symbol}
+        assert timeout == 15
+        return QuoteResponse()
+
+    row = TencentRealtimeGateway(get=get).quotes([symbol])[0]
+    assert row.latest_price == 12.34
+    assert row.volume == volume
+    assert row.amount == pytest.approx(151234)
+    assert row.quoted_at.isoformat() == "2026-08-28T11:08:30+08:00"
+
+
+@pytest.mark.parametrize(
+    "price,stamp",
+    [("NaN", "20260828110830"), ("inf", "20260828110830"), ("-1", "20260828110830"), ("12", "bad")],
+)
+def test_realtime_bad_record_does_not_hide_good_record(price, stamp):
+    from app.adapters.tencent_realtime import TencentRealtimeGateway
+
+    class QuoteResponse:
+        text = realtime_line("sh600000", price=price, stamp=stamp) + realtime_line("sz000001")
+
+        def raise_for_status(self):
+            pass
+
+    rows = TencentRealtimeGateway(get=lambda *a, **k: QuoteResponse()).quotes(
+        ["sh600000", "sz000001"]
+    )
+    assert [row.stock_code for row in rows] == ["000001"]
+
+
+def test_realtime_keeps_old_timestamp_and_marks_zero_price_unavailable():
+    from app.adapters.tencent_realtime import TencentRealtimeGateway
+
+    class QuoteResponse:
+        text = realtime_line("sh600000", price="0", stamp="20260827150000", volume="0")
+
+        def raise_for_status(self):
+            pass
+
+    row = TencentRealtimeGateway(get=lambda *a, **k: QuoteResponse()).quotes(["sh600000"])[0]
+    assert row.latest_price is None
+    assert row.pct_change is None
+    assert row.quoted_at.date() == date(2026, 8, 27)
+
+
+def test_realtime_network_timeout_is_actionable_and_group_size_is_bounded():
+    from app.adapters.tencent_realtime import TencentRealtimeGateway
+
+    calls = []
+
+    def timeout(*args, **kwargs):
+        calls.append(kwargs["timeout"])
+        raise TimeoutError("source timeout")
+
+    gateway = TencentRealtimeGateway(get=timeout)
+    with pytest.raises(MarketDataUnavailable, match="腾讯实时报价请求失败"):
+        gateway.quotes(["sh600000"])
+    assert calls == [15]
+    with pytest.raises(ValueError):
+        gateway.quotes(["sh600000"] * 101)
+    assert calls == [15]

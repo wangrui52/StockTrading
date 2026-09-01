@@ -1,7 +1,13 @@
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 
-from app.ports.market_data import IndexRecord, MarketDataUnavailable, PriceRecord, StockRecord
+from app.ports.market_data import (
+    IndexRecord,
+    MarketDataUnavailable,
+    PriceRecord,
+    StockRecord,
+    TradeCalendarRecord,
+)
 
 
 @dataclass(slots=True)
@@ -16,6 +22,18 @@ class FakeMarketDataGateway:
 
     def is_trade_date(self, value: date) -> bool:
         return value in self.open_dates
+
+    def trade_calendar(
+        self, start_date: date, end_date: date
+    ) -> list[TradeCalendarRecord]:
+        dates = (
+            start_date + timedelta(days=offset)
+            for offset in range((end_date - start_date).days + 1)
+        )
+        return [
+            TradeCalendarRecord(value, value in self.open_dates)
+            for value in dates
+        ]
 
     def list_stocks(self) -> list[StockRecord]:
         return self.stocks

@@ -8,6 +8,12 @@ class MarketDataUnavailable(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
+class TradeCalendarRecord:
+    trade_date: date
+    is_open: bool
+
+
+@dataclass(frozen=True, slots=True)
 class StockRecord:
     market: str
     stock_code: str
@@ -49,6 +55,10 @@ class MarketDataGateway(Protocol):
     adapter_version: str
 
     def is_trade_date(self, value: date) -> bool: ...
+
+    def trade_calendar(
+        self, start_date: date, end_date: date
+    ) -> list[TradeCalendarRecord]: ...
 
     def list_stocks(self) -> list[StockRecord]: ...
 

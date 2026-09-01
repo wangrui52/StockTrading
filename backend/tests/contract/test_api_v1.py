@@ -8,16 +8,19 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+import app.api.v1.router as api_router_application
 from app.application.sync_pipeline import SyncResult
 from app.infrastructure.database import create_sqlite_memory_session_factory
 from app.infrastructure.models import (
     Base,
+    CandidateOutcome,
     CandidateResult,
     DailyIndicator,
     DailyPrice,
     DataBatch,
     IndexDaily,
     OperationLog,
+    OutcomeRun,
     SignalEvent,
     StockBasic,
     SyncJob,
@@ -212,6 +215,70 @@ def test_dashboard_candidate_names_match_market_and_keep_missing_stocks(
     }
 
 
+def test_dashboard_exposes_all_candidate_outcome_aggregate_states(
+    client: TestClient, session_factory: sessionmaker[Session]
+) -> None:
+    with session_factory() as session:
+        batch = session.get(DataBatch, 1)
+        published_run = OutcomeRun(
+            evaluation_batch_id=batch.id,
+            calculation_version="outcome-v1",
+            rule_version=batch.rule_version,
+            status="COMPLETED",
+        )
+        session.add(published_run)
+        session.flush()
+        candidates = []
+        for code in ("600010", "600011", "600012"):
+            candidate = CandidateResult(
+                batch_id=batch.id,
+                market="SH",
+                stock_code=code,
+                score=5,
+                reasons=[],
+            )
+            session.add(candidate)
+            session.flush()
+            candidates.append(candidate)
+        for candidate, statuses in zip(
+            candidates,
+            (
+                ("COMPLETED", "COMPLETED", "COMPLETED"),
+                ("UNAVAILABLE", "UNAVAILABLE", "UNAVAILABLE"),
+                ("COMPLETED", "UNAVAILABLE", "PENDING"),
+            ),
+            strict=True,
+        ):
+            session.add_all(
+                [
+                    CandidateOutcome(
+                        candidate_result_id=candidate.id,
+                        source_batch_id=batch.id,
+                        source_trade_date=batch.trade_date,
+                        rule_version=batch.rule_version,
+                        horizon_trading_days=horizon,
+                        evaluation_batch_id=batch.id,
+                        outcome_run_id=published_run.id,
+                        status=status,
+                        calculation_version="outcome-v1",
+                    )
+                    for horizon, status in zip((1, 3, 5), statuses, strict=True)
+                ]
+            )
+        session.commit()
+
+    response = client.get("/api/v1/dashboard")
+    assert response.status_code == 200
+    states = {
+        item["stock_code"]: item["outcome_status"]
+        for item in response.json()["candidates"]
+    }
+    assert states["600000"] == "PENDING"
+    assert states["600010"] == "COMPLETED"
+    assert states["600011"] == "UNAVAILABLE"
+    assert states["600012"] == "PARTIAL"
+
+
 def test_status_dashboard_and_stock_queries_share_active_context(
     client: TestClient, session_factory: sessionmaker[Session]
 ) -> None:
@@ -224,6 +291,7 @@ def test_status_dashboard_and_stock_queries_share_active_context(
     assert dashboard.status_code == 200
     assert_context(dashboard.json())
     assert dashboard.json()["candidates"][0]["stock_code"] == "600000"
+    assert dashboard.json()["candidates"][0]["outcome_status"] == "PENDING"
     assert dashboard.json()["indices"][0]["index_code"] == "000001"
 
     detail = client.get("/api/v1/stocks/SH/600000?source=watchlist")
@@ -244,6 +312,125 @@ def test_status_dashboard_and_stock_queries_share_active_context(
         assert response.status_code == 200
         assert_context(response.json())
         assert response.json()["items"]
+
+
+def test_stock_detail_returns_only_current_candidate_outcomes_sorted_and_complete(
+    client: TestClient, session_factory: sessionmaker[Session]
+) -> None:
+    with session_factory() as session:
+        active = session.get(DataBatch, 1)
+        published_run = OutcomeRun(
+            evaluation_batch_id=active.id,
+            calculation_version="outcome-v1",
+            rule_version=active.rule_version,
+            status="COMPLETED",
+        )
+        session.add(published_run)
+        session.flush()
+        current = session.scalar(
+            select(CandidateResult).where(
+                CandidateResult.batch_id == active.id,
+                CandidateResult.market == "SH",
+                CandidateResult.stock_code == "600000",
+            )
+        )
+        historical = DataBatch(
+            trade_date=date(2025, 3, 28),
+            status="READY",
+            completeness_rate=1,
+            rule_version="v1",
+            is_active=False,
+        )
+        session.add(historical)
+        session.flush()
+        historical_candidate = CandidateResult(
+            batch_id=historical.id,
+            market="SH",
+            stock_code="600000",
+            score=9,
+            reasons=[],
+        )
+        other_market = CandidateResult(
+            batch_id=active.id,
+            market="SZ",
+            stock_code="600000",
+            score=8,
+            reasons=[],
+        )
+        unscanned = CandidateResult(
+            batch_id=active.id,
+            market="SH",
+            stock_code="600002",
+            score=7,
+            reasons=[],
+        )
+        session.add_all([historical_candidate, other_market, unscanned])
+        session.add_all(
+            [
+                StockBasic(market="SZ", stock_code="600000", stock_name="同码股票"),
+                StockBasic(market="SH", stock_code="600001", stock_name="非候选股票"),
+                StockBasic(market="SH", stock_code="600002", stock_name="待扫描股票"),
+            ]
+        )
+        session.flush()
+
+        def outcome(candidate, horizon, *, version="outcome-v1", status="COMPLETED"):
+            return CandidateOutcome(
+                candidate_result_id=candidate.id,
+                source_batch_id=candidate.batch_id,
+                evaluation_batch_id=active.id,
+                outcome_run_id=(published_run.id if version == "outcome-v1" else None),
+                source_trade_date=active.trade_date,
+                rule_version="v1",
+                horizon_trading_days=horizon,
+                reference_trade_date=date(2025, 4, 1) if status == "COMPLETED" else None,
+                evaluation_trade_date=date(2025, 4, horizon) if status == "COMPLETED" else None,
+                expected_evaluation_trade_date=date(2025, 4, horizon),
+                reference_price=10 if status == "COMPLETED" else None,
+                evaluation_price=10 + horizon if status == "COMPLETED" else None,
+                return_rate=float(horizon) if status == "COMPLETED" else None,
+                mfe=float(horizon + 1) if status == "COMPLETED" else None,
+                mae=float(-horizon) if status == "COMPLETED" else None,
+                status=status,
+                unavailable_reason="停牌" if status == "UNAVAILABLE" else None,
+                calculation_version=version,
+            )
+
+        session.add_all(
+            [
+                outcome(current, 5, status="UNAVAILABLE"),
+                outcome(current, 1),
+                outcome(current, 3),
+                outcome(current, 1, version="outcome-v2"),
+                outcome(historical_candidate, 1),
+                outcome(other_market, 1),
+            ]
+        )
+        session.commit()
+
+    response = client.get("/api/v1/stocks/SH/600000")
+    assert response.status_code == 200
+    items = response.json()["candidate_outcomes"]
+    assert [item["horizon_trading_days"] for item in items] == [1, 3, 5]
+    assert items[0] == {
+        "horizon_trading_days": 1,
+        "status": "COMPLETED",
+        "reference_trade_date": "2025-04-01",
+        "evaluation_trade_date": "2025-04-01",
+        "expected_evaluation_trade_date": "2025-04-01",
+        "reference_price": 10.0,
+        "evaluation_price": 11.0,
+        "return_rate": 1.0,
+        "mfe": 2.0,
+        "mae": -1.0,
+        "unavailable_reason": None,
+        "calculation_version": "outcome-v1",
+    }
+    assert items[2]["status"] == "UNAVAILABLE"
+    assert items[2]["unavailable_reason"] == "停牌"
+    assert items[2]["return_rate"] is None
+    assert client.get("/api/v1/stocks/SH/600001").json()["candidate_outcomes"] == []
+    assert client.get("/api/v1/stocks/SH/600002").json()["candidate_outcomes"] == []
 
 
 def test_screening_watchlist_alert_and_report_commands(
@@ -427,6 +614,86 @@ def test_incomplete_batch_requires_explicit_risk_confirmation_before_activation(
     assert activated.json()["risk_acknowledged"] is True
 
 
+@pytest.mark.parametrize(
+    ("initial_status", "request_payload", "expected_status"),
+    [
+        ("READY", {}, "READY"),
+        ("FAILED", {"force": True}, "READY_WITH_GAPS"),
+    ],
+)
+def test_manual_activation_schedules_outcomes_after_commit_and_isolates_failures(
+    session_factory: sessionmaker[Session],
+    initial_status: str,
+    request_payload: dict[str, bool],
+    expected_status: str,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with session_factory() as session:
+        batch = DataBatch(
+            trade_date=date(2025, 4, 1),
+            status=initial_status,
+            completeness_rate=0.98 if initial_status == "FAILED" else 1,
+            rule_version="v1",
+            is_active=False,
+        )
+        session.add(batch)
+        session.flush()
+        if initial_status == "FAILED":
+            session.add(
+                SyncJob(
+                    batch_id=batch.id,
+                    job_type="MANUAL",
+                    target_trade_date=batch.trade_date,
+                    status="FAILED",
+                    stage="FETCHING",
+                    error_summary="数据完整率 98.00% 低于阈值",
+                )
+            )
+        session.commit()
+        batch_id = batch.id
+    calls: list[int] = []
+    sensitive_message = (
+        "private-activation sqlite:////Users/private/manual.db "
+        "SELECT * FROM outcome_run https://secret.example"
+    )
+
+    def fail_after_observing_commit(observed_batch_id: int) -> None:
+        with session_factory() as session:
+            observed = session.get(DataBatch, observed_batch_id)
+            assert observed is not None and observed.is_active
+            assert observed.status == expected_status
+        calls.append(observed_batch_id)
+        raise RuntimeError(sensitive_message)
+
+    client = TestClient(
+        create_app(
+            session_factory=session_factory,
+            outcome_runner=fail_after_observing_commit,
+        )
+    )
+    monkeypatch.setattr(api_router_application.logger, "disabled", False)
+    with caplog.at_level("ERROR", logger="app.api.v1.router"):
+        response = client.post(
+            f"/api/v1/data-batches/{batch_id}/activate",
+            json=request_payload,
+        )
+
+    assert response.status_code == 200
+    assert response.json()["batch_status"] == expected_status
+    assert calls == [batch_id]
+    logs = caplog.text
+    assert f"batch_id={batch_id}" in logs
+    assert "error_type=RuntimeError" in logs
+    assert "private-activation" not in logs
+    assert "SELECT" not in logs
+    assert "/Users/private" not in logs
+    assert "https://secret.example" not in logs
+    with session_factory() as session:
+        activated = session.get(DataBatch, batch_id)
+        assert activated is not None and activated.is_active
+
+
 def test_openapi_exposes_all_p0_paths_and_context_schema(
     session_factory: sessionmaker[Session],
 ) -> None:
@@ -461,6 +728,20 @@ def test_openapi_exposes_all_p0_paths_and_context_schema(
         "batch_status",
         "risk_acknowledged",
     }
+    candidate_schema = schema["components"]["schemas"]["CandidateItem"]
+    assert candidate_schema["properties"]["outcome_status"]["enum"] == [
+        "PENDING",
+        "PARTIAL",
+        "COMPLETED",
+        "UNAVAILABLE",
+    ]
+    detail_schema = schema["components"]["schemas"]["StockDetailResponse"]
+    assert "candidate_outcomes" in detail_schema["required"]
+    assert detail_schema["properties"]["candidate_outcomes"]["items"]["$ref"].endswith(
+        "/StockCandidateOutcomeItem"
+    )
+    stock_outcome = schema["components"]["schemas"]["StockCandidateOutcomeItem"]
+    assert "expected_evaluation_trade_date" in stock_outcome["properties"]
 
 
 def test_openapi_snapshot_matches_application(session_factory: sessionmaker[Session]) -> None:

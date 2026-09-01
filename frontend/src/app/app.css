@@ -141,6 +141,16 @@ h1 {
   background: #fff0d4;
 }
 
+.status-tag.success {
+  color: #17653f;
+  background: #e5f5ec;
+}
+
+.status-tag.danger {
+  color: #9f2f2f;
+  background: #fdeaea;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -223,6 +233,27 @@ button:disabled { opacity: .55; cursor: wait; }
 .alert-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #edf1ee; }
 .alert-row button { padding: 7px 12px; font-size: 13px; }
 
+.realtime-panel { border-top: 3px solid #1d6b4f; }
+.realtime-panel .metric-grid { margin: 16px 0; }
+.realtime-panel .metric-grid article { min-width: 0; }
+.realtime-panel .metric-grid strong { font-size: 24px; }
+.realtime-panel td { white-space: nowrap; }
+.realtime-panel .table-wrap { max-height: 520px; overflow: auto; }
+.realtime-panel thead { position: sticky; top: 0; background: #fff; }
+.realtime-search { margin: 16px 0; }
+.realtime-pagination { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+.realtime-warning, td small.realtime-warning { color: #98601b; }
+
+.strategy-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
+.strategy-filters label { display: grid; gap: 6px; color: #596961; }
+.strategy-filters input, .strategy-filters select { width: 100%; padding: 10px 12px; border: 1px solid #cfdad4; border-radius: 9px; background: #fff; }
+.strategy-filters > button { align-self: end; }
+.strategy-metrics { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.strategy-metrics strong { font-size: 20px; }
+.strategy-warning { margin: 0; padding: 12px 16px; color: #89530e; border: 1px solid #f0d39f; border-radius: 12px; background: #fff8eb; }
+.strategy-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 16px; }
+.strategy-effect-page td { white-space: nowrap; }
+
 .empty-state p:not(.eyebrow) {
   max-width: 560px;
   color: #627069;
@@ -261,6 +292,7 @@ footer {
   }
 
   .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .strategy-metrics { grid-template-columns: 1fr; }
   .context-strip { align-items: flex-start; }
   .panel-title, .detail-hero { align-items: flex-start; flex-direction: column; }
 }

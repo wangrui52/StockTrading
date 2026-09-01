@@ -6,7 +6,10 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+import app.application.sync_pipeline as sync_pipeline_application
+import scripts.run_scheduler as scheduler_script
 from app.adapters.fake_market_data import FakeMarketDataGateway
+from app.application.candidate_outcomes import CandidateOutcomeModule
 from app.application.sync_pipeline import NonTradingDayError, SyncPipeline
 from app.infrastructure.database import create_sqlite_memory_session_factory
 from app.infrastructure.models import (
@@ -16,13 +19,19 @@ from app.infrastructure.models import (
     DailyIndicator,
     DailyPrice,
     DataBatch,
+    OutcomeRun,
     SignalEvent,
     StockBasic,
     SyncJob,
     TradeCalendar,
 )
 from app.main import recover_interrupted_jobs
-from app.ports.market_data import MarketDataUnavailable, PriceRecord, StockRecord
+from app.ports.market_data import (
+    MarketDataUnavailable,
+    PriceRecord,
+    StockRecord,
+    TradeCalendarRecord,
+)
 
 
 def test_calendar_failure_is_recorded_and_not_left_pending(session_factory):
@@ -264,6 +273,274 @@ def test_successful_sync_calculates_and_activates_complete_batch(
         assert session.scalar(select(TradeCalendar.is_open)) is True
 
 
+def test_successful_sync_persists_authoritative_calendar_for_price_history_range(
+    session_factory: sessionmaker[Session],
+) -> None:
+    target = date(2025, 3, 31)
+    source = gateway(target)
+    missing_open_day = target - timedelta(days=2)
+    history_dates = {
+        item.trade_date
+        for rows in source.histories.values()
+        for item in rows
+    }
+    source.open_dates = history_dates - {missing_open_day}
+    source.histories = {
+        code: [item for item in rows if item.trade_date != missing_open_day]
+        for code, rows in source.histories.items()
+    }
+
+    SyncPipeline(session_factory, source).run(target)
+
+    with session_factory() as session:
+        rows = session.execute(
+            select(TradeCalendar.trade_date, TradeCalendar.is_open)
+            .where(TradeCalendar.market == "CN")
+            .order_by(TradeCalendar.trade_date)
+        ).all()
+
+    assert rows[0][0] == min(history_dates)
+    assert rows[-1][0] == target
+    assert len(rows) == (target - min(history_dates)).days + 1
+    assert dict(rows)[missing_open_day] is False
+    assert all(dict(rows)[value] is True for value in source.open_dates)
+
+
+def test_legacy_provider_persists_each_natural_day_via_is_trade_date(
+    session_factory: sessionmaker[Session],
+) -> None:
+    target = date(2025, 3, 31)
+    source = gateway(target)
+    history_start = min(
+        item.trade_date
+        for rows in source.histories.values()
+        for item in rows
+    )
+    expected_dates = [
+        history_start + timedelta(days=offset)
+        for offset in range((target - history_start).days + 1)
+    ]
+    open_dates = set(expected_dates[::2]) | {target}
+    calls: list[date] = []
+
+    class LegacyProvider:
+        adapter_version = source.adapter_version
+
+        def is_trade_date(self, value: date) -> bool:
+            calls.append(value)
+            return value in open_dates
+
+        def list_stocks(self):
+            return source.list_stocks()
+
+        def daily_prices(self, stock, end_date, *, start_date=None):
+            return source.daily_prices(stock, end_date, start_date=start_date)
+
+        def index_prices(self, end_date):
+            return source.index_prices(end_date)
+
+    pipeline = SyncPipeline(session_factory, LegacyProvider())  # type: ignore[arg-type]
+    prepared, should_execute = pipeline.prepare(target)
+    assert should_execute is True
+    calls.clear()
+
+    pipeline.execute_prepared(prepared.job_id, prepared.batch_id, target)
+
+    assert calls == expected_dates
+    with session_factory() as session:
+        rows = session.execute(
+            select(TradeCalendar.trade_date, TradeCalendar.is_open)
+            .where(TradeCalendar.market == "CN")
+            .order_by(TradeCalendar.trade_date)
+        ).all()
+    assert rows == [(value, value in open_dates) for value in expected_dates]
+
+
+@pytest.mark.parametrize("missing_position", [0, 7, -1])
+def test_incomplete_authoritative_calendar_is_rejected_before_activation_and_outcomes(
+    session_factory: sessionmaker[Session],
+    missing_position: int,
+) -> None:
+    target = date(2025, 3, 31)
+    source = gateway(target)
+    calendar_start = min(
+        item.trade_date
+        for rows in source.histories.values()
+        for item in rows
+    )
+    all_dates = [
+        calendar_start + timedelta(days=offset)
+        for offset in range((target - calendar_start).days + 1)
+    ]
+    missing_date = all_dates[missing_position]
+    outcome_calls: list[int] = []
+
+    class IncompleteCalendarProvider(FakeMarketDataGateway):
+        def trade_calendar(self, start_date: date, end_date: date):
+            return [
+                TradeCalendarRecord(value, value in self.open_dates)
+                for value in all_dates
+                if value != missing_date
+            ]
+
+    incomplete = IncompleteCalendarProvider(
+        source.open_dates,
+        source.stocks,
+        source.histories,
+    )
+    pipeline = SyncPipeline(
+        session_factory,
+        incomplete,
+        outcome_runner=outcome_calls.append,
+    )
+
+    with pytest.raises(MarketDataUnavailable, match="交易日历区间不完整"):
+        pipeline.run(target)
+
+    with session_factory() as session:
+        batch = session.scalar(select(DataBatch).order_by(DataBatch.id.desc()))
+        job = session.scalar(select(SyncJob).order_by(SyncJob.id.desc()))
+        assert batch is not None and batch.status == "FAILED" and not batch.is_active
+        assert job is not None and job.status == "FAILED"
+        assert "交易日历区间不完整" in job.error_summary
+        assert session.scalar(select(DataBatch.id).where(DataBatch.is_active.is_(True))) is None
+    assert outcome_calls == []
+
+
+def test_successful_sync_runs_outcomes_once_after_activation_commit(
+    session_factory: sessionmaker[Session],
+) -> None:
+    target = date(2025, 3, 31)
+    calls: list[int] = []
+
+    def run_outcomes(batch_id: int) -> None:
+        with session_factory() as session:
+            batch = session.get(DataBatch, batch_id)
+            job = session.scalar(select(SyncJob).where(SyncJob.batch_id == batch_id))
+            assert batch is not None and batch.status == "READY" and batch.is_active
+            assert job is not None and job.status == "READY"
+        calls.append(batch_id)
+
+    pipeline = SyncPipeline(
+        session_factory,
+        gateway(target),
+        outcome_runner=run_outcomes,
+    )
+    first = pipeline.run(target)
+    second = pipeline.run(target)
+
+    assert first == second
+    assert calls == [first.batch_id]
+
+
+def test_run_scheduler_production_wiring_evaluates_new_active_ready_batch(
+    session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = date(2025, 3, 31)
+    observed: list[int] = []
+    recoveries: list[bool] = []
+
+    def recover_outcomes(self: CandidateOutcomeModule) -> int:
+        recoveries.append(True)
+        return 0
+
+    def evaluate_after_commit(
+        self: CandidateOutcomeModule, batch_id: int
+    ) -> object:
+        with self._session_factory() as session:
+            batch = session.get(DataBatch, batch_id)
+            assert batch is not None
+            assert batch.status == "READY"
+            assert batch.is_active is True
+        observed.append(batch_id)
+        return object()
+
+    class OneTickScheduler:
+        def __init__(self, _factory, _is_trade_date, run_sync) -> None:
+            self.run_sync = run_sync
+
+        def tick(self, _now) -> bool:
+            self.run_sync(target, job_type="AUTO")
+            return True
+
+    class StopLoop(Exception):
+        pass
+
+    def stop_loop(_seconds: int) -> None:
+        raise StopLoop
+
+    monkeypatch.setattr(
+        scheduler_script, "create_sqlite_session_factory", lambda: session_factory
+    )
+    monkeypatch.setattr(
+        scheduler_script, "TencentMarketDataGateway", lambda: gateway(target)
+    )
+    monkeypatch.setattr(scheduler_script, "DailySyncScheduler", OneTickScheduler)
+    monkeypatch.setattr(
+        CandidateOutcomeModule, "evaluate_due_outcomes", evaluate_after_commit
+    )
+    monkeypatch.setattr(
+        CandidateOutcomeModule, "recover_interrupted_runs", recover_outcomes
+    )
+    monkeypatch.setattr(scheduler_script.time, "sleep", stop_loop)
+
+    with pytest.raises(StopLoop):
+        scheduler_script.main()
+
+    assert recoveries == [True]
+    assert len(observed) == 1
+    with session_factory() as session:
+        active = session.scalar(select(DataBatch).where(DataBatch.is_active.is_(True)))
+        assert active is not None
+        assert observed == [active.id]
+
+
+def test_outcome_failure_does_not_change_successful_sync(
+    session_factory: sessionmaker[Session],
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = date(2025, 3, 31)
+    sensitive_message = (
+        "private-sync sqlite:////Users/private/sync.db "
+        "SELECT * FROM candidate_outcome https://secret.example"
+    )
+
+    def fail_outcomes(_batch_id: int) -> None:
+        raise RuntimeError(sensitive_message)
+
+    pipeline = SyncPipeline(
+        session_factory,
+        gateway(target),
+        outcome_runner=fail_outcomes,
+    )
+    prepared, should_execute = pipeline.prepare(target, job_type="AUTO")
+    assert should_execute is True
+    monkeypatch.setattr(sync_pipeline_application.logger, "disabled", False)
+    with caplog.at_level("ERROR", logger="app.application.sync_pipeline"):
+        result = pipeline.execute_prepared(
+            prepared.job_id,
+            prepared.batch_id,
+            target,
+        )
+    assert result == prepared
+    logs = caplog.text
+    assert f"batch_id={prepared.batch_id}" in logs
+    assert "error_type=RuntimeError" in logs
+    assert "private-sync" not in logs
+    assert "SELECT" not in logs
+    assert "/Users/private" not in logs
+    assert "https://secret.example" not in logs
+
+    with session_factory() as session:
+        batch = session.get(DataBatch, result.batch_id)
+        job = session.get(SyncJob, result.job_id)
+        assert batch is not None and batch.status == "READY" and batch.is_active
+        assert job is not None and job.status == "READY" and job.stage == "READY"
+        assert job.job_type == "AUTO"
+
+
 def test_partial_failure_marks_batch_failed_and_preserves_previous_active(
     session_factory: sessionmaker[Session],
 ) -> None:
@@ -501,3 +778,150 @@ def test_application_recovery_marks_interrupted_job_and_batch_failed(
         assert session.get(SyncJob, job_id).status == "FAILED"
         assert "应用进程中断" in session.get(SyncJob, job_id).error_summary
         assert session.get(DataBatch, batch_id).status == "FAILED"
+
+
+def test_application_recovery_commits_sync_state_when_outcome_table_is_missing() -> None:
+    old_schema_factory = create_sqlite_memory_session_factory()
+    Base.metadata.create_all(
+        old_schema_factory.kw["bind"],
+        tables=[DataBatch.__table__, SyncJob.__table__],
+    )
+    with old_schema_factory() as session:
+        batch = DataBatch(
+            trade_date=date(2025, 3, 31),
+            status="BUILDING",
+            completeness_rate=0,
+            rule_version="v1",
+            is_active=False,
+        )
+        session.add(batch)
+        session.flush()
+        job = SyncJob(
+            batch_id=batch.id,
+            job_type="MANUAL",
+            target_trade_date=batch.trade_date,
+            status="FETCHING",
+            stage="FETCHING",
+        )
+        session.add(job)
+        ready_batch = DataBatch(
+            trade_date=date(2025, 3, 28),
+            status="READY",
+            completeness_rate=1,
+            rule_version="v1",
+            is_active=False,
+        )
+        session.add(ready_batch)
+        session.flush()
+        completed_job = SyncJob(
+            batch_id=ready_batch.id,
+            job_type="MANUAL",
+            target_trade_date=ready_batch.trade_date,
+            status="COMPLETED",
+            stage="COMPLETED",
+        )
+        session.add(completed_job)
+        session.commit()
+        job_id, batch_id = job.id, batch.id
+        completed_job_id, ready_batch_id = completed_job.id, ready_batch.id
+
+    recover_interrupted_jobs(old_schema_factory)
+
+    with old_schema_factory() as session:
+        assert session.get(SyncJob, job_id).status == "FAILED"
+        assert session.get(DataBatch, batch_id).status == "FAILED"
+        assert session.get(SyncJob, completed_job_id).status == "COMPLETED"
+        assert session.get(DataBatch, ready_batch_id).status == "READY"
+
+    old_schema_factory.kw["bind"].dispose()
+
+
+def test_application_recovery_continues_when_sync_table_is_missing() -> None:
+    outcome_only_factory = create_sqlite_memory_session_factory()
+    Base.metadata.create_all(
+        outcome_only_factory.kw["bind"],
+        tables=[DataBatch.__table__, OutcomeRun.__table__],
+    )
+    with outcome_only_factory() as session:
+        batch = DataBatch(
+            trade_date=date(2025, 3, 31),
+            status="READY",
+            completeness_rate=1,
+            rule_version="v1",
+            is_active=False,
+        )
+        session.add(batch)
+        session.flush()
+        run = OutcomeRun(
+            evaluation_batch_id=batch.id,
+            rule_version=batch.rule_version,
+            status="RUNNING",
+        )
+        session.add(run)
+        session.commit()
+        run_id = run.id
+
+    recover_interrupted_jobs(outcome_only_factory)
+
+    with outcome_only_factory() as session:
+        recovered = session.get(OutcomeRun, run_id)
+        assert recovered.status == "FAILED"
+        assert recovered.finished_at is not None
+        assert "可重试" in recovered.error_summary
+
+    outcome_only_factory.kw["bind"].dispose()
+
+
+def test_application_recovery_only_fails_running_outcome_runs(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        batches = [
+            DataBatch(
+                trade_date=date(2025, 3, 28 + offset),
+                status="READY",
+                completeness_rate=1,
+                rule_version="v1",
+                is_active=False,
+            )
+            for offset in range(4)
+        ]
+        session.add_all(batches)
+        session.flush()
+        runs = [
+            OutcomeRun(
+                evaluation_batch_id=batch.id,
+                rule_version=batch.rule_version,
+                status=status,
+            )
+            for batch, status in zip(
+                batches,
+                ("RUNNING", "PENDING", "COMPLETED", "FAILED"),
+                strict=True,
+            )
+        ]
+        session.add_all(runs)
+        session.commit()
+        run_ids = [run.id for run in runs]
+
+    recover_interrupted_jobs(session_factory)
+
+    with session_factory() as session:
+        recovered = [session.get(OutcomeRun, run_id) for run_id in run_ids]
+        assert [run.status for run in recovered] == [
+            "FAILED",
+            "PENDING",
+            "COMPLETED",
+            "FAILED",
+        ]
+        assert recovered[0].finished_at is not None
+        assert "应用进程中断" in recovered[0].error_summary
+        assert recovered[1].finished_at is None
+
+
+def test_application_recovery_without_migrated_tables_does_not_block_startup() -> None:
+    empty_factory = create_sqlite_memory_session_factory()
+
+    recover_interrupted_jobs(empty_factory)
+
+    empty_factory.kw["bind"].dispose()

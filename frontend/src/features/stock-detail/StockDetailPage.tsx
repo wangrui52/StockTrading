@@ -2,7 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
 
-import { request, type DecisionNotes, type IndicatorSeries, type PriceSeries, type SignalSeries, type StockDetail, type Watchlist, type WatchlistGroups } from '../../shared/api/client'
+import { request, type DecisionNotes, type IndicatorSeries, type PriceSeries, type SignalSeries, type StockCandidateOutcome, type StockDetail, type Watchlist, type WatchlistGroups } from '../../shared/api/client'
+import { evaluationDateLabel } from '../../shared/outcomes/presentation'
+import { useSystemStatusQuery } from '../../shared/queries/systemStatus'
 
 type IndicatorPoint = {
   trade_date?: string
@@ -82,16 +84,54 @@ function TechnicalChart({ prices, indicators }: { prices: PriceSeries['items']; 
   return <div className="price-chart" ref={container} aria-label="K线与技术指标图" />
 }
 
+const outcomeStatusLabels: Record<string, { label: string; tone: string }> = {
+  PENDING: { label: '待评价', tone: '' },
+  PARTIAL: { label: '部分完成', tone: 'warning' },
+  COMPLETED: { label: '已评价', tone: 'success' },
+  UNAVAILABLE: { label: '数据缺失', tone: 'danger' },
+}
+
+function outcomeStatus(status: string) {
+  return outcomeStatusLabels[status] ?? { label: status || '状态未知', tone: 'warning' }
+}
+
+function datedPrice(date: string | null, value: number | null) {
+  return `${date ?? '--'} · ${value == null ? '--' : value.toFixed(2)}`
+}
+
+function percentage(value: number | null) {
+  return value == null ? '--' : `${value.toFixed(2)}%`
+}
+
+function changeTone(value: number | null) {
+  return value == null || value === 0 ? undefined : value > 0 ? 'rise' : 'fall'
+}
+
+function CandidateOutcomePanel({ items }: { items: StockCandidateOutcome[] }) {
+  return <section className="panel candidate-outcomes"><div className="panel-title"><div><p className="eyebrow">候选跟踪</p><h3>后续表现</h3></div></div>
+    {items.length === 0 ? <p className="muted">当前批次未入选候选或尚未生成评价记录</p> : <div className="table-wrap"><table aria-label="后续表现明细"><thead><tr><th>周期</th><th>状态</th><th>参考日 · 价格</th><th>评价日或预计日 · 价格</th><th>收益</th><th>MFE</th><th>MAE</th><th>缺失原因</th><th>计算版本</th></tr></thead><tbody>
+      {items.map((item) => {
+        const presentation = outcomeStatus(item.status)
+        return <tr key={`${item.horizon_trading_days}-${item.calculation_version}`}><td>T+{item.horizon_trading_days}</td><td><span className={`status-tag ${presentation.tone}`.trim()}>{presentation.label}</span></td><td>{datedPrice(item.reference_trade_date, item.reference_price)}</td><td>{item.status === 'PENDING' ? <>{evaluationDateLabel(item)}<small>{item.evaluation_price == null ? '--' : item.evaluation_price.toFixed(2)}</small></> : datedPrice(item.evaluation_trade_date, item.evaluation_price)}</td><td className={changeTone(item.return_rate)}>{percentage(item.return_rate)}</td><td className={changeTone(item.mfe)}>{percentage(item.mfe)}</td><td className={changeTone(item.mae)}>{percentage(item.mae)}</td><td>{item.unavailable_reason ?? '--'}</td><td>{item.calculation_version}</td></tr>
+      })}
+    </tbody></table></div>}
+    <p className="muted outcome-method">不复权价格，参考价为候选后首个有效交易日开盘价；仅供研究</p>
+  </section>
+}
+
 export function StockDetailPage() {
   const { market = '', code = '' } = useParams()
   const source = new URLSearchParams(useLocation().search).get('source')
   const client = useQueryClient()
+  const systemStatus = useSystemStatusQuery()
+  const activeBatchId = systemStatus.data?.active_batch?.batch_id ?? null
   const [note, setNote] = useState('')
   const [chartDays, setChartDays] = useState(250)
-  const detail = useQuery({ queryKey: ['stock', market, code, source], queryFn: () => request<StockDetail>(`/stocks/${market}/${code}${source ? `?source=${encodeURIComponent(source)}` : ''}`) })
-  const prices = useQuery({ queryKey: ['prices', market, code], queryFn: () => request<PriceSeries>(`/stocks/${market}/${code}/prices`) })
-  const indicators = useQuery({ queryKey: ['indicators', market, code], queryFn: () => request<IndicatorSeries>(`/stocks/${market}/${code}/indicators`) })
-  const signals = useQuery({ queryKey: ['signals', market, code], queryFn: () => request<SignalSeries>(`/stocks/${market}/${code}/signals`) })
+  const batchReady = systemStatus.isFetched
+  const detail = useQuery({ queryKey: ['stock', activeBatchId, market, code, source], queryFn: ({ signal }) => request<StockDetail>(`/stocks/${market}/${code}${source ? `?source=${encodeURIComponent(source)}` : ''}`, { signal }), enabled: batchReady })
+  const prices = useQuery({ queryKey: ['prices', activeBatchId, market, code], queryFn: ({ signal }) => request<PriceSeries>(`/stocks/${market}/${code}/prices`, { signal }), enabled: batchReady })
+  const indicators = useQuery({ queryKey: ['indicators', activeBatchId, market, code], queryFn: ({ signal }) => request<IndicatorSeries>(`/stocks/${market}/${code}/indicators`, { signal }), enabled: batchReady })
+  const signals = useQuery({ queryKey: ['signals', activeBatchId, market, code], queryFn: ({ signal }) => request<SignalSeries>(`/stocks/${market}/${code}/signals`, { signal }), enabled: batchReady })
   const notes = useQuery({ queryKey: ['notes', market, code], queryFn: () => request<DecisionNotes>('/decision-notes') })
   const watchlist = useQuery({ queryKey: ['watchlist'], queryFn: () => request<Watchlist>('/watchlist/items') })
   const groups = useQuery({ queryKey: ['watchlist-groups'], queryFn: () => request<WatchlistGroups>('/watchlist/groups') })
@@ -107,5 +147,5 @@ export function StockDetailPage() {
   const stockNotes = notes.data?.items?.filter((item) => item.market === market && item.stock_code === code) ?? []
   const watched = watchlist.data?.items?.find((item) => item.market === market && item.stock_code === code)
   const chartPrices = prices.data!.items.filter((item) => item.adjustment === 'qfq').slice(-chartDays)
-  return <div className="page-stack"><section className="panel detail-hero"><div><p className="eyebrow">{market} · {code} · {detail.data!.industry ?? '行业未知'}</p><h2>{detail.data!.stock_name}</h2><p className="muted">交易日 {detail.data!.trade_date} · 页面价格为不复权，图表与指标采用前复权</p><div className="inline-form">{detail.data!.price?.is_suspended && <span className="status-tag warning">停牌</span>}{watched ? <button type="button" onClick={() => removeWatch.mutate(watched.id)}>移出自选</button> : <button type="button" onClick={() => addWatch.mutate()}>加入自选</button>}</div></div><strong>{detail.data!.price?.close?.toFixed(2) ?? '--'} 元</strong></section><section className="metric-grid"><article><span>趋势摘要</span><strong>{detail.data!.trend}</strong></article><article><span>信号风险</span><strong>{detail.data!.risk_level}</strong><small>{detail.data!.risk_reasons.join(' / ') || '无高风险事件'}</small></article><article><span>涨跌幅</span><strong>{detail.data!.price?.pct_change == null ? '--' : `${detail.data!.price.pct_change.toFixed(2)}%`}</strong></article><article><span>换手率</span><strong>{detail.data!.price?.turnover_rate == null ? '--' : `${detail.data!.price.turnover_rate.toFixed(2)}%`}</strong></article><article><span>成交额</span><strong>{detail.data!.price ? `${(detail.data!.price.amount / 100000000).toFixed(2)} 亿` : '--'}</strong></article></section><section className="panel"><div className="panel-title"><h3>K线、成交量与技术指标</h3><div className="inline-form">{[60, 120, 250].map((days) => <button type="button" key={days} disabled={chartDays === days} onClick={() => setChartDays(days)}>{days} 日</button>)}</div></div><TechnicalChart prices={chartPrices.length ? chartPrices : prices.data!.items.filter((item) => item.adjustment === 'raw').slice(-chartDays)} indicators={indicators.data!.items} />{Boolean(latestIndicator?.unavailable) && <p className="muted">样本不足：{String(latestIndicator?.unavailable)}</p>}</section><section className="metric-grid"><article><span>MA5</span><strong>{String(latestIndicator?.ma5 ?? '--')}</strong></article><article><span>MA20</span><strong>{String(latestIndicator?.ma20 ?? '--')}</strong></article><article><span>RSI14</span><strong>{String(latestIndicator?.rsi14 ?? '--')}</strong></article><article><span>事件数</span><strong>{signals.data!.items.length}</strong></article></section><section className="panel"><h3>最近事件</h3>{signals.data!.items.length ? signals.data!.items.slice(0, 10).map((item) => <p key={item.id}>{item.trade_date} · {item.rule_code}</p>) : <p className="muted">暂无事件。</p>}</section><section className="panel"><h3>关注笔记</h3><form className="inline-form" onSubmit={submitNote}><label>观察结论<input value={note} onChange={(event) => setNote(event.target.value)} /></label><button type="submit">保存笔记</button></form>{stockNotes.map((item) => <NoteRow key={item.id} item={item} onUpdate={(id, content) => updateNote.mutate({ id, content })} onDelete={(id) => deleteNote.mutate(id)} />)}</section></div>
+  return <div className="page-stack"><section className="panel detail-hero"><div><p className="eyebrow">{market} · {code} · {detail.data!.industry ?? '行业未知'}</p><h2>{detail.data!.stock_name}</h2><p className="muted">交易日 {detail.data!.trade_date} · 页面价格为不复权，图表与指标采用前复权</p><div className="inline-form">{detail.data!.price?.is_suspended && <span className="status-tag warning">停牌</span>}{watched ? <button type="button" onClick={() => removeWatch.mutate(watched.id)}>移出自选</button> : <button type="button" onClick={() => addWatch.mutate()}>加入自选</button>}</div></div><strong>{detail.data!.price?.close?.toFixed(2) ?? '--'} 元</strong></section><section className="metric-grid"><article><span>趋势摘要</span><strong>{detail.data!.trend}</strong></article><article><span>信号风险</span><strong>{detail.data!.risk_level}</strong><small>{detail.data!.risk_reasons.join(' / ') || '无高风险事件'}</small></article><article><span>涨跌幅</span><strong>{detail.data!.price?.pct_change == null ? '--' : `${detail.data!.price.pct_change.toFixed(2)}%`}</strong></article><article><span>换手率</span><strong>{detail.data!.price?.turnover_rate == null ? '--' : `${detail.data!.price.turnover_rate.toFixed(2)}%`}</strong></article><article><span>成交额</span><strong>{detail.data!.price ? `${(detail.data!.price.amount / 100000000).toFixed(2)} 亿` : '--'}</strong></article></section><CandidateOutcomePanel items={detail.data!.candidate_outcomes ?? []} /><section className="panel"><div className="panel-title"><h3>K线、成交量与技术指标</h3><div className="inline-form">{[60, 120, 250].map((days) => <button type="button" key={days} disabled={chartDays === days} onClick={() => setChartDays(days)}>{days} 日</button>)}</div></div><TechnicalChart prices={chartPrices.length ? chartPrices : prices.data!.items.filter((item) => item.adjustment === 'raw').slice(-chartDays)} indicators={indicators.data!.items} />{Boolean(latestIndicator?.unavailable) && <p className="muted">样本不足：{String(latestIndicator?.unavailable)}</p>}</section><section className="metric-grid"><article><span>MA5</span><strong>{String(latestIndicator?.ma5 ?? '--')}</strong></article><article><span>MA20</span><strong>{String(latestIndicator?.ma20 ?? '--')}</strong></article><article><span>RSI14</span><strong>{String(latestIndicator?.rsi14 ?? '--')}</strong></article><article><span>事件数</span><strong>{signals.data!.items.length}</strong></article></section><section className="panel"><h3>最近事件</h3>{signals.data!.items.length ? signals.data!.items.slice(0, 10).map((item) => <p key={item.id}>{item.trade_date} · {item.rule_code}</p>) : <p className="muted">暂无事件。</p>}</section><section className="panel"><h3>关注笔记</h3><form className="inline-form" onSubmit={submitNote}><label>观察结论<input value={note} onChange={(event) => setNote(event.target.value)} /></label><button type="submit">保存笔记</button></form>{stockNotes.map((item) => <NoteRow key={item.id} item={item} onUpdate={(id, content) => updateNote.mutate({ id, content })} onDelete={(id) => deleteNote.mutate(id)} />)}</section></div>
 }

@@ -1,3 +1,5 @@
+import logging
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, date, datetime, timedelta
@@ -26,7 +28,10 @@ from app.ports.market_data import (
     MarketDataUnavailable,
     PriceRecord,
     StockRecord,
+    TradeCalendarRecord,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class NonTradingDayError(ValueError):
@@ -52,12 +57,14 @@ class SyncPipeline:
         rule_version: str = "v1",
         minimum_completeness: float = 0.99,
         fetch_workers: int = 1,
+        outcome_runner: Callable[[int], object] | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.gateway = gateway
         self.rule_version = rule_version
         self.minimum_completeness = minimum_completeness
         self.fetch_workers = max(1, min(fetch_workers, 4))
+        self.outcome_runner = outcome_runner
         self.indicators = IndicatorEngine()
         self.signals = SignalEngine()
         self.candidates = CandidateEngine()
@@ -197,6 +204,7 @@ class SyncPipeline:
         if previous_batch and not 0 < (target_trade_date - previous_batch.trade_date).days <= 10:
             previous_batch = None
         incremental_start = target_trade_date - timedelta(days=10) if previous_batch else None
+        calendar_start: date | None = None
         successful_count = 0
         failures: list[str] = []
         total = len(stocks)
@@ -266,6 +274,12 @@ class SyncPipeline:
                 else:
                     job.status = job.stage = "CALCULATING"
                     self._persist_prices(session, batch.id, records)
+                    record_start = min(item.trade_date for item in records)
+                    calendar_start = (
+                        record_start
+                        if calendar_start is None
+                        else min(calendar_start, record_start)
+                    )
                     self._calculate_stock(session, batch, stock, records, custom_rules)
                     successful_count += 1
             job.completed_count = successful_count
@@ -284,6 +298,14 @@ class SyncPipeline:
             self._fail_job(job, f"数据完整率 {batch.completeness_rate:.2%} 低于阈值")
             session.commit()
             return SyncResult(job_id=job.id, batch_id=batch.id)
+
+        if calendar_start is None:
+            raise MarketDataUnavailable("行情批次缺少可验证的交易日历起点")
+        self._persist_trade_calendar(
+            session,
+            start_date=calendar_start,
+            end_date=target_trade_date,
+        )
 
         job.status = job.stage = "VALIDATING"
         session.commit()
@@ -310,7 +332,66 @@ class SyncPipeline:
         job.status = job.stage = "READY"
         job.finished_at = datetime.now(UTC)
         session.commit()
+        if self.outcome_runner is not None:
+            try:
+                self.outcome_runner(batch.id)
+            except Exception as error:
+                logger.error(
+                    "候选评价任务执行失败 batch_id=%s error_type=%s",
+                    batch.id,
+                    type(error).__name__,
+                )
         return SyncResult(job_id=job.id, batch_id=batch.id)
+
+    def _persist_trade_calendar(
+        self,
+        session: Session,
+        *,
+        start_date: date,
+        end_date: date,
+    ) -> None:
+        calendar_method = getattr(self.gateway, "trade_calendar", None)
+        if callable(calendar_method):
+            records = calendar_method(start_date, end_date)
+        else:
+            # 兼容仅实现旧 is_trade_date 契约的 provider；逐日判断仍由 provider
+            # 的权威交易日历完成，不在应用层猜测工作日。
+            dates = (
+                start_date + timedelta(days=offset)
+                for offset in range((end_date - start_date).days + 1)
+            )
+            records = [
+                TradeCalendarRecord(value, self.gateway.is_trade_date(value))
+                for value in dates
+            ]
+        by_date = {item.trade_date: item for item in records}
+        expected_dates = {
+            start_date + timedelta(days=offset)
+            for offset in range((end_date - start_date).days + 1)
+        }
+        if set(by_date) != expected_dates:
+            raise MarketDataUnavailable("交易日历区间不完整")
+        existing = {
+            item.trade_date: item
+            for item in session.scalars(
+                select(TradeCalendar).where(
+                    TradeCalendar.market == "CN",
+                    TradeCalendar.trade_date.between(start_date, end_date),
+                )
+            )
+        }
+        for trade_date in sorted(expected_dates):
+            item = existing.get(trade_date)
+            if item is None:
+                session.add(
+                    TradeCalendar(
+                        market="CN",
+                        trade_date=trade_date,
+                        is_open=by_date[trade_date].is_open,
+                    )
+                )
+            else:
+                item.is_open = by_date[trade_date].is_open
 
     def _fetch_histories(self, stocks, target, starts):
         def fetch(stock):

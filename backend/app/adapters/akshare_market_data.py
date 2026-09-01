@@ -2,7 +2,13 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from app.ports.market_data import IndexRecord, MarketDataUnavailable, PriceRecord, StockRecord
+from app.ports.market_data import (
+    IndexRecord,
+    MarketDataUnavailable,
+    PriceRecord,
+    StockRecord,
+    TradeCalendarRecord,
+)
 
 
 class AkShareMarketDataGateway:
@@ -44,6 +50,19 @@ class AkShareMarketDataGateway:
 
     def is_trade_date(self, value: date) -> bool:
         return value in self._trade_dates()
+
+    def trade_calendar(
+        self, start_date: date, end_date: date
+    ) -> list[TradeCalendarRecord]:
+        open_dates = self._trade_dates()
+        dates = (
+            start_date + timedelta(days=offset)
+            for offset in range((end_date - start_date).days + 1)
+        )
+        return [
+            TradeCalendarRecord(value, value in open_dates)
+            for value in dates
+        ]
 
     def list_stocks(self) -> list[StockRecord]:
         try:

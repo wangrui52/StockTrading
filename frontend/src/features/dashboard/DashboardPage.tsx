@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 
-import { APIError, request, type AlertList, type Dashboard, type SystemStatus } from '../../shared/api/client'
+import { APIError, request, type AlertList, type Dashboard } from '../../shared/api/client'
+import { systemStatusQueryKey, useSystemStatusQuery } from '../../shared/queries/systemStatus'
+import { RealtimePanel } from './RealtimePanel'
 
 const candidateReasonLabels = new Map([
   ['BREAKOUT_MA20_WITH_VOLUME', '放量突破20日均线'],
@@ -12,53 +13,53 @@ const candidateReasonLabels = new Map([
   ['RSI_IN_CANDIDATE_RANGE', 'RSI处于45～75区间'],
 ])
 
+const outcomeStatusLabels: Record<string, { label: string; tone: string }> = {
+  PENDING: { label: '待评价', tone: '' },
+  PARTIAL: { label: '部分完成', tone: 'warning' },
+  COMPLETED: { label: '已评价', tone: 'success' },
+  UNAVAILABLE: { label: '数据缺失', tone: 'danger' },
+}
+
+function OutcomeStatus({ status }: { status?: string }) {
+  const presentation = outcomeStatusLabels[status ?? ''] ?? { label: status || '状态未知', tone: 'warning' }
+  return <span className={`status-tag ${presentation.tone}`.trim()}>{presentation.label}</span>
+}
+
 function isStale(tradeDate: string) {
   const elapsed = Date.now() - new Date(`${tradeDate}T15:00:00+08:00`).getTime()
   return elapsed > 4 * 24 * 60 * 60 * 1000
 }
 
 export function DashboardPage() {
+  return <div className="page-stack"><RealtimePanel /><DailyDashboard /></div>
+}
+
+function DailyDashboard() {
   const queryClient = useQueryClient()
-  const dashboard = useQuery({
-    queryKey: ['dashboard'],
-    queryFn: () => request<Dashboard>('/dashboard'),
-  })
-  const systemStatus = useQuery({
-    queryKey: ['system-status'],
-    queryFn: () => request<SystemStatus>('/system/status'),
-    refetchInterval: (query) => {
-      const value = query.state.data?.latest_sync?.status
-      return value && !['READY', 'FAILED'].includes(value) ? 2000 : 10000
-    },
-  })
-  const previousBatch = useRef<number | null | undefined>(undefined)
+  const systemStatus = useSystemStatusQuery()
   const activeBatchId = systemStatus.data?.active_batch?.batch_id ?? null
-  useEffect(() => {
-    if (!systemStatus.isSuccess) return
-    if (previousBatch.current !== undefined && previousBatch.current !== activeBatchId) {
-      queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] !== 'system-status' })
-    }
-    previousBatch.current = activeBatchId
-  }, [activeBatchId, systemStatus.isSuccess, queryClient])
+  const dashboard = useQuery({
+    queryKey: ['dashboard', activeBatchId],
+    queryFn: ({ signal }) => request<Dashboard>('/dashboard', { signal }),
+    enabled: systemStatus.isFetched,
+  })
   const alerts = useQuery({
-    queryKey: ['alerts'],
-    queryFn: () => request<AlertList>('/alerts?limit=10&watchlist_only=true'),
+    queryKey: ['alerts', activeBatchId],
+    queryFn: ({ signal }) => request<AlertList>('/alerts?limit=10&watchlist_only=true', { signal }),
     enabled: dashboard.isSuccess,
   })
   const sync = useMutation({
-    mutationFn: () =>
-      request('/sync-jobs', {
-        method: 'POST',
-        body: '{}',
-      }),
+    mutationFn: () => request('/sync-jobs', {
+      method: 'POST',
+      body: '{}',
+    }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      queryClient.invalidateQueries({ queryKey: ['system-status'] })
+      queryClient.invalidateQueries({ queryKey: systemStatusQueryKey, exact: true })
     },
   })
   const confirmAlert = useMutation({
     mutationFn: (id: number) => request(`/alerts/${id}/confirm`, { method: 'POST' }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['alerts'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['alerts', activeBatchId] }),
   })
   const latestSync = systemStatus.data?.latest_sync
   const syncing = sync.isPending || Boolean(latestSync && !['READY', 'FAILED'].includes(latestSync.status))
@@ -135,8 +136,8 @@ export function DashboardPage() {
       <section className="panel">
         <div className="panel-title"><div><p className="eyebrow">默认策略</p><h2>交易日候选股</h2></div><Link to="/screener">调整筛选</Link></div>
         {data.candidates.length === 0 ? <p className="muted">当前批次没有命中默认条件的股票。</p> : (
-          <div className="table-wrap"><table><thead><tr><th>股票</th><th>得分</th><th>命中原因</th></tr></thead><tbody>
-            {data.candidates.map((item) => <tr key={`${item.market}${item.stock_code}`}><td><Link to={`/stocks/${item.market}/${item.stock_code}`}>{item.stock_code}</Link><small>{item.stock_name || '名称暂缺'} · {item.market}</small></td><td>{item.score.toFixed(1)}</td><td>{item.reasons.map((reason) => candidateReasonLabels.get(reason) ?? reason).join(' / ')}</td></tr>)}
+          <div className="table-wrap"><table><thead><tr><th>股票</th><th>得分</th><th>命中原因</th><th>后续表现</th></tr></thead><tbody>
+            {data.candidates.map((item) => <tr key={`${item.market}${item.stock_code}`}><td><Link to={`/stocks/${item.market}/${item.stock_code}`}>{item.stock_code}</Link><small>{item.stock_name || '名称暂缺'} · {item.market}</small></td><td>{item.score.toFixed(1)}</td><td>{item.reasons.map((reason) => candidateReasonLabels.get(reason) ?? reason).join(' / ')}</td><td><OutcomeStatus status={item.outcome_status} /></td></tr>)}
           </tbody></table></div>
         )}
       </section>

@@ -57,6 +57,14 @@ def test_akshare_adapter_normalizes_market_fields_and_units() -> None:
     adapter = AkShareMarketDataGateway(FrozenAkShare())
 
     assert adapter.is_trade_date(date(2025, 3, 31))
+    assert [
+        (item.trade_date, item.is_open)
+        for item in adapter.trade_calendar(date(2025, 3, 29), date(2025, 3, 31))
+    ] == [
+        (date(2025, 3, 29), False),
+        (date(2025, 3, 30), False),
+        (date(2025, 3, 31), True),
+    ]
     stocks = adapter.list_stocks()
     assert [(item.market, item.stock_code) for item in stocks] == [
         ("SH", "600000"),

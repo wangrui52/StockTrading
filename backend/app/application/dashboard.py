@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from datetime import date
 from typing import Any
 
@@ -22,7 +23,11 @@ def context(batch: DataBatch) -> dict[str, Any]:
     }
 
 
-def dashboard_payload(session: Session, batch: DataBatch) -> dict[str, Any]:
+def dashboard_payload(
+    session: Session,
+    batch: DataBatch,
+    outcome_statuses: Mapping[int, str] | None = None,
+) -> dict[str, Any]:
     candidates = session.execute(
         select(CandidateResult, StockBasic.stock_name)
         .outerjoin(
@@ -61,6 +66,7 @@ def dashboard_payload(session: Session, batch: DataBatch) -> dict[str, Any]:
                 "stock_name": name,
                 "score": item.score,
                 "reasons": item.reasons,
+                "outcome_status": (outcome_statuses or {}).get(item.id, "PENDING"),
             }
             for item, name in candidates
         ],

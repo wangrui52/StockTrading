@@ -1401,6 +1401,590 @@
           }
         }
       }
+    },
+    "/api/v1/realtime/refresh": {
+      "post": {
+        "tags": [
+          "realtime"
+        ],
+        "summary": "Refresh",
+        "operationId": "refresh_api_v1_realtime_refresh_post",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "market",
+                "watchlist"
+              ],
+              "type": "string",
+              "default": "market",
+              "title": "Scope"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RealtimeJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/realtime/status": {
+      "get": {
+        "tags": [
+          "realtime"
+        ],
+        "summary": "Status",
+        "operationId": "status_api_v1_realtime_status_get",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "market",
+                "watchlist"
+              ],
+              "type": "string",
+              "default": "market",
+              "title": "Scope"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RealtimeStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/realtime/quotes": {
+      "get": {
+        "tags": [
+          "realtime"
+        ],
+        "summary": "Quotes",
+        "operationId": "quotes_api_v1_realtime_quotes_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "default": "",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "market",
+                "watchlist"
+              ],
+              "type": "string",
+              "default": "market",
+              "title": "Scope"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RealtimeQuotesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/strategy/outcomes": {
+      "get": {
+        "summary": "List Outcomes",
+        "operationId": "list_outcomes_api_v1_strategy_outcomes_get",
+        "parameters": [
+          {
+            "name": "rule_version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rule Version"
+            }
+          },
+          {
+            "name": "latest_trading_days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 250,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Latest Trading Days"
+            }
+          },
+          {
+            "name": "horizon",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Horizon"
+            }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "PENDING",
+                    "COMPLETED",
+                    "UNAVAILABLE"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyOutcomePage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/strategy/outcomes/summary": {
+      "get": {
+        "summary": "Summarize Outcomes",
+        "operationId": "summarize_outcomes_api_v1_strategy_outcomes_summary_get",
+        "parameters": [
+          {
+            "name": "rule_version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rule Version"
+            }
+          },
+          {
+            "name": "latest_trading_days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 250,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Latest Trading Days"
+            }
+          },
+          {
+            "name": "horizon",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Horizon"
+            }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "PENDING",
+                    "COMPLETED",
+                    "UNAVAILABLE"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyOutcomeSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/strategy/outcomes/{candidate_result_id}": {
+      "get": {
+        "summary": "Candidate Outcomes",
+        "operationId": "candidate_outcomes_api_v1_strategy_outcomes__candidate_result_id__get",
+        "parameters": [
+          {
+            "name": "candidate_result_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Candidate Result Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateOutcomes"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/strategy/outcome-runs": {
+      "post": {
+        "summary": "Create Outcome Run",
+        "operationId": "create_outcome_run_api_v1_strategy_outcome_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutcomeRunCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutcomeRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/strategy/outcome-runs/{run_id}": {
+      "get": {
+        "summary": "Get Outcome Run",
+        "operationId": "get_outcome_run_api_v1_strategy_outcome_runs__run_id__get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutcomeRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1791,6 +2375,17 @@
               }
             ],
             "title": "Rsi14"
+          },
+          "outcome_status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "PARTIAL",
+              "COMPLETED",
+              "UNAVAILABLE"
+            ],
+            "title": "Outcome Status",
+            "default": "PENDING"
           }
         },
         "type": "object",
@@ -1801,6 +2396,27 @@
           "reasons"
         ],
         "title": "CandidateItem"
+      },
+      "CandidateOutcomes": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/StrategyOutcomeView"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "calculation_version": {
+            "type": "string",
+            "title": "Calculation Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "calculation_version"
+        ],
+        "title": "CandidateOutcomes"
       },
       "DashboardResponse": {
         "properties": {
@@ -2141,6 +2757,99 @@
         ],
         "title": "NoteUpdate"
       },
+      "OutcomeRunCreateRequest": {
+        "properties": {
+          "evaluation_batch_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Evaluation Batch Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evaluation_batch_id"
+        ],
+        "title": "OutcomeRunCreateRequest"
+      },
+      "OutcomeRunResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "evaluation_batch_id": {
+            "type": "integer",
+            "title": "Evaluation Batch Id"
+          },
+          "calculation_version": {
+            "type": "string",
+            "title": "Calculation Version"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "expected_count": {
+            "type": "integer",
+            "title": "Expected Count"
+          },
+          "completed_count": {
+            "type": "integer",
+            "title": "Completed Count"
+          },
+          "unavailable_count": {
+            "type": "integer",
+            "title": "Unavailable Count"
+          },
+          "pending_count": {
+            "type": "integer",
+            "title": "Pending Count"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "error_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Summary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "evaluation_batch_id",
+          "calculation_version",
+          "status",
+          "expected_count",
+          "completed_count",
+          "unavailable_count",
+          "pending_count",
+          "started_at",
+          "finished_at",
+          "error_summary"
+        ],
+        "title": "OutcomeRunResponse"
+      },
       "PresetList": {
         "properties": {
           "items": {
@@ -2380,6 +3089,320 @@
           "items"
         ],
         "title": "PriceSeriesResponse"
+      },
+      "RealtimeJobResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "market",
+              "watchlist"
+            ],
+            "title": "Scope",
+            "default": "market"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "FETCHING",
+              "READY",
+              "PARTIAL",
+              "FAILED"
+            ],
+            "title": "Status"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "total_count": {
+            "type": "integer",
+            "title": "Total Count"
+          },
+          "completed_count": {
+            "type": "integer",
+            "title": "Completed Count"
+          },
+          "failed_count": {
+            "type": "integer",
+            "title": "Failed Count"
+          },
+          "error_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Summary"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "stage",
+          "total_count",
+          "completed_count",
+          "failed_count",
+          "error_summary",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "RealtimeJobResponse"
+      },
+      "RealtimeQuoteResponse": {
+        "properties": {
+          "market": {
+            "type": "string",
+            "title": "Market"
+          },
+          "stock_code": {
+            "type": "string",
+            "title": "Stock Code"
+          },
+          "stock_name": {
+            "type": "string",
+            "title": "Stock Name"
+          },
+          "latest_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Price"
+          },
+          "pct_change": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pct Change"
+          },
+          "volume": {
+            "type": "integer",
+            "title": "Volume"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "quoted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Quoted At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "market",
+          "stock_code",
+          "stock_name",
+          "latest_price",
+          "pct_change",
+          "volume",
+          "amount",
+          "quoted_at"
+        ],
+        "title": "RealtimeQuoteResponse"
+      },
+      "RealtimeQuotesResponse": {
+        "properties": {
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RealtimeSnapshotResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RealtimeQuoteResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "snapshot",
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "RealtimeQuotesResponse"
+      },
+      "RealtimeSnapshotResponse": {
+        "properties": {
+          "refresh_id": {
+            "type": "integer",
+            "title": "Refresh Id"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "market",
+              "watchlist"
+            ],
+            "title": "Scope",
+            "default": "market"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "finished_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Finished At"
+          },
+          "quote_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Quote Date"
+          },
+          "total_count": {
+            "type": "integer",
+            "title": "Total Count"
+          },
+          "received_count": {
+            "type": "integer",
+            "title": "Received Count"
+          },
+          "missing_count": {
+            "type": "integer",
+            "title": "Missing Count"
+          },
+          "missing_symbols": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Symbols"
+          },
+          "stale_count": {
+            "type": "integer",
+            "title": "Stale Count"
+          },
+          "unavailable_count": {
+            "type": "integer",
+            "title": "Unavailable Count"
+          },
+          "market_summary": {
+            "$ref": "#/components/schemas/MarketSummary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "refresh_id",
+          "source",
+          "started_at",
+          "finished_at",
+          "quote_date",
+          "total_count",
+          "received_count",
+          "missing_count",
+          "missing_symbols",
+          "stale_count",
+          "unavailable_count",
+          "market_summary"
+        ],
+        "title": "RealtimeSnapshotResponse"
+      },
+      "RealtimeStatusResponse": {
+        "properties": {
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RealtimeJobResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RealtimeSnapshotResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cooldown_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cooldown Until"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job",
+          "snapshot",
+          "cooldown_until"
+        ],
+        "title": "RealtimeStatusResponse"
       },
       "ReportRequest": {
         "properties": {
@@ -2892,6 +3915,146 @@
         ],
         "title": "SignalSeriesResponse"
       },
+      "StockCandidateOutcomeItem": {
+        "properties": {
+          "horizon_trading_days": {
+            "type": "integer",
+            "title": "Horizon Trading Days"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "COMPLETED",
+              "UNAVAILABLE"
+            ],
+            "title": "Status"
+          },
+          "reference_trade_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Trade Date"
+          },
+          "evaluation_trade_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluation Trade Date"
+          },
+          "expected_evaluation_trade_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Evaluation Trade Date",
+            "description": "由完整权威交易日历确定的预计评价日；不代表评价已完成"
+          },
+          "reference_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Price"
+          },
+          "evaluation_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluation Price"
+          },
+          "return_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Rate"
+          },
+          "mfe": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mfe"
+          },
+          "mae": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mae"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          },
+          "calculation_version": {
+            "type": "string",
+            "title": "Calculation Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "horizon_trading_days",
+          "status",
+          "reference_trade_date",
+          "evaluation_trade_date",
+          "expected_evaluation_trade_date",
+          "reference_price",
+          "evaluation_price",
+          "return_rate",
+          "mfe",
+          "mae",
+          "unavailable_reason",
+          "calculation_version"
+        ],
+        "title": "StockCandidateOutcomeItem"
+      },
       "StockDetailResponse": {
         "properties": {
           "source": {
@@ -2967,6 +4130,13 @@
             },
             "type": "array",
             "title": "Risk Reasons"
+          },
+          "candidate_outcomes": {
+            "items": {
+              "$ref": "#/components/schemas/StockCandidateOutcomeItem"
+            },
+            "type": "array",
+            "title": "Candidate Outcomes"
           }
         },
         "type": "object",
@@ -2983,9 +4153,484 @@
           "price",
           "trend",
           "risk_level",
-          "risk_reasons"
+          "risk_reasons",
+          "candidate_outcomes"
         ],
         "title": "StockDetailResponse"
+      },
+      "StrategyOutcomeFilters": {
+        "properties": {
+          "rule_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Version"
+          },
+          "latest_trading_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Trading Days"
+          },
+          "horizon": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Horizon"
+          },
+          "date_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date From"
+          },
+          "date_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date To"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rule_version",
+          "latest_trading_days",
+          "horizon",
+          "date_from",
+          "date_to",
+          "status"
+        ],
+        "title": "StrategyOutcomeFilters"
+      },
+      "StrategyOutcomePage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/StrategyOutcomeView"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          },
+          "calculation_version": {
+            "type": "string",
+            "title": "Calculation Version"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/StrategyOutcomeFilters"
+          },
+          "data_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size",
+          "calculation_version",
+          "filters",
+          "data_date"
+        ],
+        "title": "StrategyOutcomePage"
+      },
+      "StrategyOutcomeSummary": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "completed": {
+            "type": "integer",
+            "title": "Completed"
+          },
+          "unavailable": {
+            "type": "integer",
+            "title": "Unavailable"
+          },
+          "pending": {
+            "type": "integer",
+            "title": "Pending"
+          },
+          "sample_size": {
+            "type": "integer",
+            "title": "Sample Size"
+          },
+          "completion_rate": {
+            "type": "number",
+            "title": "Completion Rate"
+          },
+          "mean_return_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Return Rate"
+          },
+          "median_return_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Return Rate"
+          },
+          "positive_return_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Positive Return Ratio"
+          },
+          "mean_mfe": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Mfe"
+          },
+          "mean_mae": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Mae"
+          },
+          "max_drawdown_approx": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Drawdown Approx",
+            "description": "COMPLETED 样本持有窗口 MAE 的最差值（最小值，负百分数）；仅为样本级近似，不是资金曲线最大回撤"
+          },
+          "insufficient_sample": {
+            "type": "boolean",
+            "title": "Insufficient Sample"
+          },
+          "calculation_version": {
+            "type": "string",
+            "title": "Calculation Version"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/StrategyOutcomeFilters"
+          },
+          "data_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "completed",
+          "unavailable",
+          "pending",
+          "sample_size",
+          "completion_rate",
+          "mean_return_rate",
+          "median_return_rate",
+          "positive_return_ratio",
+          "mean_mfe",
+          "mean_mae",
+          "max_drawdown_approx",
+          "insufficient_sample",
+          "calculation_version",
+          "filters",
+          "data_date"
+        ],
+        "title": "StrategyOutcomeSummary"
+      },
+      "StrategyOutcomeView": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "candidate_result_id": {
+            "type": "integer",
+            "title": "Candidate Result Id"
+          },
+          "market": {
+            "type": "string",
+            "title": "Market"
+          },
+          "stock_code": {
+            "type": "string",
+            "title": "Stock Code"
+          },
+          "stock_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stock Name"
+          },
+          "source_batch_id": {
+            "type": "integer",
+            "title": "Source Batch Id"
+          },
+          "evaluation_batch_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluation Batch Id"
+          },
+          "source_trade_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Source Trade Date"
+          },
+          "rule_version": {
+            "type": "string",
+            "title": "Rule Version"
+          },
+          "horizon_trading_days": {
+            "type": "integer",
+            "title": "Horizon Trading Days"
+          },
+          "reference_trade_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Trade Date"
+          },
+          "evaluation_trade_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluation Trade Date"
+          },
+          "expected_evaluation_trade_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Evaluation Trade Date",
+            "description": "由完整权威交易日历确定的预计评价日；不代表评价已完成"
+          },
+          "reference_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Price"
+          },
+          "evaluation_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluation Price"
+          },
+          "return_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Rate"
+          },
+          "mfe": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mfe"
+          },
+          "mae": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mae"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          },
+          "calculation_version": {
+            "type": "string",
+            "title": "Calculation Version"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "candidate_result_id",
+          "market",
+          "stock_code",
+          "stock_name",
+          "source_batch_id",
+          "evaluation_batch_id",
+          "source_trade_date",
+          "rule_version",
+          "horizon_trading_days",
+          "reference_trade_date",
+          "evaluation_trade_date",
+          "expected_evaluation_trade_date",
+          "reference_price",
+          "evaluation_price",
+          "return_rate",
+          "mfe",
+          "mae",
+          "status",
+          "unavailable_reason",
+          "calculation_version",
+          "updated_at"
+        ],
+        "title": "StrategyOutcomeView"
       },
       "SyncCreatedResponse": {
         "properties": {
@@ -3323,6 +4968,16 @@
             "type": "string",
             "title": "Alert Status",
             "default": "UNTRIGGERED"
+          },
+          "realtime": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RealtimeQuoteResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",

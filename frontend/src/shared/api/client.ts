@@ -1,5 +1,11 @@
 import type { components } from './schema'
 
+export type RealtimeStatus = components['schemas']['RealtimeStatusResponse']
+export type RealtimeJob = components['schemas']['RealtimeJobResponse']
+export type RealtimeQuotes = components['schemas']['RealtimeQuotesResponse']
+
+export type StockCandidateOutcome = components['schemas']['StockCandidateOutcomeItem']
+
 export type Dashboard = components['schemas']['DashboardResponse']
 export type SystemStatus = components['schemas']['SystemStatusResponse']
 export type Screening = components['schemas']['ScreeningResponse']
@@ -15,6 +21,10 @@ export type AlertList = components['schemas']['AlertListResponse']
 export type Settings = components['schemas']['SettingsResponse']
 export type AlertRules = components['schemas']['AlertRuleList']
 export type DecisionNotes = components['schemas']['NoteList']
+export type StrategyOutcomePage = components['schemas']['StrategyOutcomePage']
+export type StrategyOutcomeSummary = components['schemas']['StrategyOutcomeSummary']
+export type CandidateOutcomes = components['schemas']['CandidateOutcomes']
+export type OutcomeRun = components['schemas']['OutcomeRunResponse']
 
 export class APIError extends Error {
   constructor(

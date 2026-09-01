@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, date, datetime
 from typing import Annotated, Any
 
@@ -19,6 +20,7 @@ from app.api.v1.schemas import (
     ReportResponse,
     ScreeningResponse,
     SignalSeriesResponse,
+    StockCandidateOutcomeItem,
     StockDetailResponse,
     SyncCreatedResponse,
     SyncJobResponse,
@@ -33,16 +35,19 @@ from app.application.dashboard import (
     dashboard_payload,
     stock_name,
 )
+from app.application.realtime import SNAPSHOT_IDS
 from app.application.reports import create_stock_report
 from app.application.screening import screen
 from app.application.watchlist import add_item, list_items
 from app.infrastructure.models import (
     AlertEventState,
     AnalysisReport,
+    CandidateResult,
     DailyIndicator,
     DailyPrice,
     DataBatch,
     OperationLog,
+    RealtimeSnapshot,
     SignalEvent,
     StockBasic,
     SyncJob,
@@ -51,6 +56,18 @@ from app.infrastructure.models import (
 )
 
 router = APIRouter(prefix="/api/v1")
+logger = logging.getLogger(__name__)
+
+
+def _run_outcomes_safely(outcome_runner, batch_id: int) -> None:
+    try:
+        outcome_runner(batch_id)
+    except Exception as error:
+        logger.error(
+            "候选评价后台任务执行失败 batch_id=%s error_type=%s",
+            batch_id,
+            type(error).__name__,
+        )
 
 
 class APIError(Exception):
@@ -214,7 +231,11 @@ def get_sync_job(job_id: int, db: SessionDep) -> dict[str, Any]:
 
 @router.post("/data-batches/{batch_id}/activate", response_model=BatchActivationResponse)
 def activate_data_batch(
-    batch_id: int, payload: BatchActivationRequest, db: SessionDep
+    batch_id: int,
+    payload: BatchActivationRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: SessionDep,
 ) -> dict[str, Any]:
     batch = db.get(DataBatch, batch_id)
     if batch is None:
@@ -230,18 +251,26 @@ def activate_data_batch(
         batch.risk_acknowledged = True
     SQLAlchemyBatchStore(db).activate_ready_batch(batch.id)
     db.commit()
+    background_tasks.add_task(
+        _run_outcomes_safely,
+        request.app.state.outcome_runner,
+        batch.id,
+    )
     return {**context(batch), "completeness_rate": batch.completeness_rate}
 
 
 @router.get("/dashboard", response_model=DashboardResponse)
-def dashboard(db: SessionDep) -> dict[str, Any]:
-    return dashboard_payload(db, require_batch(db))
+def dashboard(request: Request, db: SessionDep) -> dict[str, Any]:
+    batch = require_batch(db)
+    statuses = request.app.state.candidate_outcomes.get_batch_statuses(batch.id)
+    return dashboard_payload(db, batch, statuses)
 
 
 @router.get("/stocks/{market}/{stock_code}", response_model=StockDetailResponse)
 def stock_detail(
     market: str,
     stock_code: str,
+    request: Request,
     db: SessionDep,
     source: str | None = Query(default=None, pattern="^(dashboard|screener|watchlist|direct)$"),
 ) -> dict[str, Any]:
@@ -295,6 +324,18 @@ def stock_detail(
         and values.get("ma20") is not None
     ):
         trend = "偏强" if values["ma5"] > values["ma20"] else "偏弱"
+    candidate_id = db.scalar(
+        select(CandidateResult.id).where(
+            CandidateResult.batch_id == batch.id,
+            CandidateResult.market == market,
+            CandidateResult.stock_code == stock_code,
+        )
+    )
+    candidate_outcomes = (
+        request.app.state.candidate_outcomes.get_candidate_outcomes(candidate_id)
+        if candidate_id is not None
+        else []
+    )
     payload = {
         **context(batch),
         "market": market,
@@ -305,6 +346,9 @@ def stock_detail(
         "trend": trend,
         "risk_level": risk_level,
         "risk_reasons": risk_reasons,
+        "candidate_outcomes": [
+            StockCandidateOutcomeItem.model_validate(item) for item in candidate_outcomes
+        ],
     }
     db.add(
         OperationLog(
@@ -390,7 +434,14 @@ def screenings(payload: ScreeningRequest, db: SessionDep) -> dict[str, Any]:
 @router.get("/watchlist/items", response_model=WatchlistResponse)
 def watchlist_items(db: SessionDep) -> dict[str, Any]:
     batch = active_batch(db)
-    return {"items": [_watchlist_payload(db, item, batch) for item in list_items(db)]}
+    snapshot = db.get(RealtimeSnapshot, SNAPSHOT_IDS["watchlist"])
+    quotes = {(q["market"], q["stock_code"]): q for q in snapshot.quotes} if snapshot else {}
+    return {
+        "items": [
+            _watchlist_payload(db, item, batch, realtime=quotes.get((item.market, item.stock_code)))
+            for item in list_items(db)
+        ]
+    }
 
 
 @router.get("/watchlist/groups", response_model=WatchlistGroupResponse)
@@ -535,7 +586,13 @@ def _signal_payload(item: SignalEvent) -> dict[str, Any]:
     }
 
 
-def _watchlist_payload(db: Session, item: WatchlistItem, batch: DataBatch | None) -> dict[str, Any]:
+def _watchlist_payload(
+    db: Session,
+    item: WatchlistItem,
+    batch: DataBatch | None,
+    *,
+    realtime: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     group = db.get(WatchlistGroup, item.group_id)
     stock = db.scalar(
         select(StockBasic).where(
@@ -597,6 +654,7 @@ def _watchlist_payload(db: Session, item: WatchlistItem, batch: DataBatch | None
         "signal_codes": sorted(signal.rule_code for signal in signals),
         "risk_level": risk_level,
         "alert_status": alert_status,
+        "realtime": realtime,
     }
 
 
