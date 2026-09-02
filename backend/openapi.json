@@ -1415,12 +1415,9 @@
             "in": "query",
             "required": false,
             "schema": {
-              "enum": [
-                "market",
-                "watchlist"
-              ],
+              "const": "watchlist",
               "type": "string",
-              "default": "market",
+              "default": "watchlist",
               "title": "Scope"
             }
           }
@@ -1462,12 +1459,9 @@
             "in": "query",
             "required": false,
             "schema": {
-              "enum": [
-                "market",
-                "watchlist"
-              ],
+              "const": "watchlist",
               "type": "string",
-              "default": "market",
+              "default": "watchlist",
               "title": "Scope"
             }
           }
@@ -1543,12 +1537,9 @@
             "in": "query",
             "required": false,
             "schema": {
-              "enum": [
-                "market",
-                "watchlist"
-              ],
+              "const": "watchlist",
               "type": "string",
-              "default": "market",
+              "default": "watchlist",
               "title": "Scope"
             }
           }
@@ -3098,12 +3089,9 @@
           },
           "scope": {
             "type": "string",
-            "enum": [
-              "market",
-              "watchlist"
-            ],
+            "const": "watchlist",
             "title": "Scope",
-            "default": "market"
+            "default": "watchlist"
           },
           "status": {
             "type": "string",
@@ -3287,12 +3275,9 @@
           },
           "scope": {
             "type": "string",
-            "enum": [
-              "market",
-              "watchlist"
-            ],
+            "const": "watchlist",
             "title": "Scope",
-            "default": "market"
+            "default": "watchlist"
           },
           "source": {
             "type": "string",

@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/v1/realtime", tags=["realtime"])
 
 class RealtimeJobResponse(BaseModel):
     id: int
-    scope: RealtimeScope = "market"
+    scope: RealtimeScope = "watchlist"
     status: Literal["FETCHING", "READY", "PARTIAL", "FAILED"]
     stage: str
     total_count: int
@@ -26,7 +26,7 @@ class RealtimeJobResponse(BaseModel):
 
 class RealtimeSnapshotResponse(BaseModel):
     refresh_id: int
-    scope: RealtimeScope = "market"
+    scope: RealtimeScope = "watchlist"
     source: str
     started_at: datetime
     finished_at: datetime
@@ -55,7 +55,9 @@ class RealtimeQuotesResponse(BaseModel):
 
 
 @router.post("/refresh", status_code=202, response_model=RealtimeJobResponse)
-def refresh(request: Request, background_tasks: BackgroundTasks, scope: RealtimeScope = "market"):
+def refresh(
+    request: Request, background_tasks: BackgroundTasks, scope: RealtimeScope = "watchlist"
+):
     service = request.app.state.realtime
     try:
         job, execute = service.prepare(scope=scope)
@@ -67,7 +69,7 @@ def refresh(request: Request, background_tasks: BackgroundTasks, scope: Realtime
 
 
 @router.get("/status", response_model=RealtimeStatusResponse)
-def status(request: Request, scope: RealtimeScope = "market"):
+def status(request: Request, scope: RealtimeScope = "watchlist"):
     return request.app.state.realtime.status(scope=scope)
 
 
@@ -77,6 +79,6 @@ def quotes(
     q: str = Query(default="", max_length=64),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
-    scope: RealtimeScope = "market",
+    scope: RealtimeScope = "watchlist",
 ):
     return request.app.state.realtime.quotes(q=q, page=page, page_size=page_size, scope=scope)

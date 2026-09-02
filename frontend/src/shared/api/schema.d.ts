@@ -1126,10 +1126,10 @@ export interface components {
             id: number;
             /**
              * Scope
-             * @default market
-             * @enum {string}
+             * @default watchlist
+             * @constant
              */
-            scope: "market" | "watchlist";
+            scope: "watchlist";
             /**
              * Status
              * @enum {string}
@@ -1193,10 +1193,10 @@ export interface components {
             refresh_id: number;
             /**
              * Scope
-             * @default market
-             * @enum {string}
+             * @default watchlist
+             * @constant
              */
-            scope: "market" | "watchlist";
+            scope: "watchlist";
             /** Source */
             source: string;
             /**
@@ -2907,7 +2907,7 @@ export interface operations {
     refresh_api_v1_realtime_refresh_post: {
         parameters: {
             query?: {
-                scope?: "market" | "watchlist";
+                scope?: "watchlist";
             };
             header?: never;
             path?: never;
@@ -2938,7 +2938,7 @@ export interface operations {
     status_api_v1_realtime_status_get: {
         parameters: {
             query?: {
-                scope?: "market" | "watchlist";
+                scope?: "watchlist";
             };
             header?: never;
             path?: never;
@@ -2972,7 +2972,7 @@ export interface operations {
                 q?: string;
                 page?: number;
                 page_size?: number;
-                scope?: "market" | "watchlist";
+                scope?: "watchlist";
             };
             header?: never;
             path?: never;

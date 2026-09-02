@@ -37,11 +37,11 @@ class Source:
         self.fail = False
 
     def list_stocks(self):
-        if self.fail:
-            raise MarketDataUnavailable("股票池暂时不可用")
-        return self.stocks
+        raise AssertionError("自选股实时刷新不得读取全市场股票池")
 
     def quotes(self, symbols):
+        if self.fail:
+            raise MarketDataUnavailable("报价源暂时不可用")
         return [r for r in self.rows if r.market.lower() + r.stock_code in symbols]
 
 
@@ -68,6 +68,14 @@ def service(factory, source=None):
     return RealtimeService(factory, source or Source(), clock=lambda: NOW, cooldown_seconds=0)
 
 
+def watch(factory, codes):
+    with factory() as session:
+        if not session.get(WatchlistGroup, 1):
+            session.add(WatchlistGroup(id=1, name="默认"))
+        session.add_all([WatchlistItem(group_id=1, market="SH", stock_code=c) for c in codes])
+        session.commit()
+
+
 def refresh(service):
     job, execute = service.prepare()
     assert execute
@@ -76,6 +84,7 @@ def refresh(service):
 
 
 def test_snapshot_is_separate_from_daily_and_supports_pagination_search(factory):
+    watch(factory, ["600000", "600001", "600002"])
     app = create_app(session_factory=factory)
     app.state.realtime = service(factory)
     client = TestClient(app)
@@ -90,6 +99,7 @@ def test_snapshot_is_separate_from_daily_and_supports_pagination_search(factory)
     assert client.get("/api/v1/realtime/quotes?q=股票1").json()["total"] == 1
     assert client.get("/api/v1/realtime/quotes?q=600001").json()["total"] == 1
     assert client.get("/api/v1/realtime/quotes?page_size=501").status_code == 422
+    assert client.post("/api/v1/realtime/refresh?scope=market").status_code == 422
     with factory() as session:
         assert session.scalar(select(func.count(DataBatch.id))) == 1
         assert session.scalar(select(DataBatch.trade_date)) == date(2026, 8, 27)
@@ -98,6 +108,7 @@ def test_snapshot_is_separate_from_daily_and_supports_pagination_search(factory)
 
 
 def test_repeat_click_and_cooldown_do_not_start_duplicate_work(factory):
+    watch(factory, ["600000"])
     svc = RealtimeService(factory, Source(), clock=lambda: NOW)
     first, execute = svc.prepare()
     assert execute
@@ -109,8 +120,9 @@ def test_repeat_click_and_cooldown_do_not_start_duplicate_work(factory):
     assert svc.status()["cooldown_until"] > NOW
 
 
-@pytest.mark.parametrize("failure", ["source", "incomplete", "empty_pool", "future"])
+@pytest.mark.parametrize("failure", ["source", "incomplete", "future"])
 def test_failed_refresh_retains_previous_snapshot(factory, failure):
+    watch(factory, ["600000", "600001", "600002"])
     source = Source()
     svc = service(factory, source)
     old_id = refresh(svc)
@@ -118,8 +130,6 @@ def test_failed_refresh_retains_previous_snapshot(factory, failure):
         source.fail = True
     elif failure == "incomplete":
         source.rows = source.rows[:1]
-    elif failure == "empty_pool":
-        source.stocks = []
     else:
         source.rows = [replace(r, quoted_at=NOW + timedelta(days=1)) for r in source.rows]
     refresh(svc)
@@ -132,6 +142,7 @@ def test_failed_refresh_retains_previous_snapshot(factory, failure):
 
 def test_partial_snapshot_lists_missing_and_excludes_old_and_zero_quotes_from_summary(factory):
     source = Source(100)
+    watch(factory, [stock.stock_code for stock in source.stocks])
     source.rows.pop()
     source.rows[0] = replace(source.rows[0], quoted_at=NOW - timedelta(days=1))
     source.rows[1] = replace(source.rows[1], latest_price=None, pct_change=None, volume=0, amount=0)
@@ -148,6 +159,7 @@ def test_partial_snapshot_lists_missing_and_excludes_old_and_zero_quotes_from_su
 
 
 def test_restart_marks_interrupted_job_failed_without_losing_snapshot(factory):
+    watch(factory, ["600000", "600001", "600002"])
     svc = service(factory)
     old = refresh(svc)
     pending, _ = svc.prepare()
@@ -160,6 +172,7 @@ def test_restart_marks_interrupted_job_failed_without_losing_snapshot(factory):
 
 
 def test_only_latest_snapshot_is_retained(factory):
+    watch(factory, ["600000", "600001", "600002"])
     svc = service(factory)
     refresh(svc)
     refresh(svc)
@@ -175,6 +188,7 @@ def test_concurrent_connections_claim_one_refresh(tmp_path):
 
     factory = create_sqlite_session_factory(f"sqlite+pysqlite:///{tmp_path / 'realtime.db'}")
     Base.metadata.create_all(factory.kw["bind"])
+    watch(factory, ["600000"])
     with ThreadPoolExecutor(max_workers=4) as pool:
         results = list(pool.map(lambda _: service(factory).prepare(), range(8)))
     assert sum(execute for _, execute in results) == 1
@@ -194,57 +208,33 @@ def test_missing_quotes_are_retried_without_requesting_successes_again(factory):
             return rows[:1] if len(self.calls) == 1 else rows
 
     source = RetrySource()
+    watch(factory, ["600000", "600001", "600002"])
     svc = service(factory, source)
     refresh(svc)
     assert source.calls == [["sh600000", "sh600001", "sh600002"], ["sh600001", "sh600002"]]
     assert svc.status()["job"]["status"] == "READY"
 
 
-def watch(factory, codes):
-    with factory() as session:
-        if not session.get(WatchlistGroup, 1):
-            session.add(WatchlistGroup(id=1, name="默认"))
-        session.add_all([WatchlistItem(group_id=1, market="SH", stock_code=c) for c in codes])
-        session.commit()
-
-
-def test_watchlist_refresh_only_fetches_captured_watchlist_and_keeps_market_snapshot(factory):
+def test_refresh_only_fetches_captured_watchlist(factory):
     source = Source()
     svc = service(factory, source)
-    market_id = refresh(svc)
     watch(factory, ["600000"])
-    job, execute = svc.prepare(scope="watchlist")
+    job, execute = svc.prepare()
     assert execute
     watch(factory, ["600001"])
-    source.fail = True  # 自选报价不能请求全市场股票池。
     requested = []
     original = source.quotes
     source.quotes = lambda symbols: requested.extend(symbols) or original(symbols)
     svc.execute(job.id)
     assert requested == ["sh600000"]
-    assert svc.status(scope="watchlist")["snapshot"]["received_count"] == 1
-    assert svc.status()["snapshot"]["refresh_id"] == market_id
-    assert svc.status()["snapshot"]["received_count"] == 3
-
-
-def test_watchlist_and_market_refresh_have_separate_locks_and_cooldowns(factory):
-    watch(factory, ["600000"])
-    svc = RealtimeService(factory, Source(), clock=lambda: NOW)
-    market, _ = svc.prepare()
-    watched, execute = svc.prepare(scope="watchlist")
-    assert execute and market.id != watched.id
-    repeated, execute = svc.prepare(scope="watchlist")
-    assert not execute and repeated.id == watched.id
-    svc.execute(watched.id)
-    assert svc.status()["job"]["status"] == "FETCHING"
-    assert svc.status(scope="watchlist")["job"]["status"] == "READY"
+    assert svc.status()["snapshot"]["received_count"] == 1
 
 
 def test_watchlist_api_empty_error_and_quote_enrichment(factory):
     app = create_app(session_factory=factory)
     app.state.realtime = service(factory)
     client = TestClient(app)
-    result = client.post("/api/v1/realtime/refresh?scope=watchlist")
+    result = client.post("/api/v1/realtime/refresh")
     assert result.status_code == 409
     assert result.json()["error"]["code"] == "EMPTY_WATCHLIST"
     with factory() as session:
@@ -252,7 +242,7 @@ def test_watchlist_api_empty_error_and_quote_enrichment(factory):
     watch(factory, ["600000"])
     before = client.get("/api/v1/watchlist/items").json()["items"][0]
     assert before["realtime"] is None
-    assert client.post("/api/v1/realtime/refresh?scope=watchlist").status_code == 202
+    assert client.post("/api/v1/realtime/refresh").status_code == 202
     after = client.get("/api/v1/watchlist/items").json()["items"][0]
     assert after["realtime"]["latest_price"] == 10
     assert after["realtime"]["quoted_at"] == "2026-08-28T11:10:00+08:00"
@@ -261,7 +251,8 @@ def test_watchlist_api_empty_error_and_quote_enrichment(factory):
     }
     watch(factory, ["600001"])
     assert client.get("/api/v1/watchlist/items").json()["items"][1]["realtime"] is None
-    assert client.get("/api/v1/realtime/status").json()["snapshot"] is None
+    assert client.get("/api/v1/realtime/status").json()["snapshot"]["received_count"] == 1
+    assert client.get("/api/v1/realtime/status?scope=market").status_code == 422
     assert client.get("/api/v1/realtime/status?scope=bad").status_code == 422
 
 
@@ -269,10 +260,10 @@ def test_failed_watchlist_refresh_preserves_prior_quote(factory):
     watch(factory, ["600000"])
     source = Source()
     svc = service(factory, source)
-    job, _ = svc.prepare(scope="watchlist")
+    job, _ = svc.prepare()
     svc.execute(job.id)
     source.rows = []
-    later, _ = svc.prepare(scope="watchlist")
+    later, _ = svc.prepare()
     svc.execute(later.id)
-    assert svc.status(scope="watchlist")["job"]["status"] == "FAILED"
-    assert svc.status(scope="watchlist")["snapshot"]["refresh_id"] == job.id
+    assert svc.status()["job"]["status"] == "FAILED"
+    assert svc.status()["snapshot"]["refresh_id"] == job.id

@@ -13,8 +13,8 @@ from app.ports.market_data import MarketDataUnavailable
 from app.ports.realtime import RealtimeGateway, RealtimeQuote
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
-RealtimeScope = Literal["market", "watchlist"]
-SNAPSHOT_IDS = {"market": 1, "watchlist": 2}
+RealtimeScope = Literal["watchlist"]
+SNAPSHOT_IDS = {"watchlist": 2}
 
 
 class EmptyWatchlistError(ValueError):
@@ -37,7 +37,9 @@ class RealtimeService:
         self.factory, self.gateway = factory, gateway
         self.clock, self.cooldown_seconds = clock, cooldown_seconds
 
-    def prepare(self, *, scope: RealtimeScope = "market") -> tuple[RealtimeRefresh, bool]:
+    def prepare(self, *, scope: RealtimeScope = "watchlist") -> tuple[RealtimeRefresh, bool]:
+        if scope != "watchlist":
+            raise ValueError("仅支持刷新自选股实时行情")
         now = utc(self.clock())
         with self.factory() as session:
             # SQLite 短事务抢占，网络请求均在事务外执行。
@@ -56,16 +58,14 @@ class RealtimeService:
             ):
                 session.commit()
                 return latest, False
-            requested_symbols = []
-            if scope == "watchlist":
-                requested_symbols = sorted(
-                    {
-                        item.market.lower() + item.stock_code
-                        for item in session.scalars(select(WatchlistItem))
-                    }
-                )
-                if not requested_symbols:
-                    raise EmptyWatchlistError("自选股为空，请先加入自选股再刷新行情")
+            requested_symbols = sorted(
+                {
+                    item.market.lower() + item.stock_code
+                    for item in session.scalars(select(WatchlistItem))
+                }
+            )
+            if not requested_symbols:
+                raise EmptyWatchlistError("自选股为空，请先加入自选股再刷新行情")
             job = RealtimeRefresh(started_at=now, scope=scope, requested_symbols=requested_symbols)
             session.add(job)
             session.commit()
@@ -113,16 +113,12 @@ class RealtimeService:
             scope = job.scope
             requested_symbols = job.requested_symbols
         try:
-            if scope == "watchlist":
-                # 名单在点击时固定，不读取全市场股票池，也不受采集中增删自选影响。
-                symbols = requested_symbols
-                if not symbols:
-                    raise MarketDataUnavailable("本次自选名单为空，未替换快照")
-            else:
-                stocks = self.gateway.list_stocks()
-                symbols = sorted({s.market.lower() + s.stock_code for s in stocks})
-                if not symbols or len(symbols) != len(stocks):
-                    raise MarketDataUnavailable("股票池为空或包含重复股票，未替换快照")
+            if scope != "watchlist":
+                raise MarketDataUnavailable("全市场实时行情已停用")
+            # 名单在点击时固定，不读取全市场股票池，也不受采集中增删自选影响。
+            symbols = requested_symbols
+            if not symbols:
+                raise MarketDataUnavailable("本次自选名单为空，未替换快照")
             self._progress(job_id, total_count=len(symbols), stage="QUOTES")
             groups = [symbols[i : i + 100] for i in range(0, len(symbols), 100)]
             quotes: list[RealtimeQuote] = []
@@ -208,7 +204,7 @@ class RealtimeService:
             )
             session.commit()
 
-    def status(self, *, scope: RealtimeScope = "market") -> dict[str, Any]:
+    def status(self, *, scope: RealtimeScope = "watchlist") -> dict[str, Any]:
         with self.factory() as session:
             job = session.scalar(
                 select(RealtimeRefresh)
@@ -245,7 +241,12 @@ class RealtimeService:
         }
 
     def quotes(
-        self, *, q: str = "", page: int = 1, page_size: int = 50, scope: RealtimeScope = "market"
+        self,
+        *,
+        q: str = "",
+        page: int = 1,
+        page_size: int = 50,
+        scope: RealtimeScope = "watchlist",
     ) -> dict[str, Any]:
         with self.factory() as session:
             snapshot = session.get(RealtimeSnapshot, SNAPSHOT_IDS[scope])

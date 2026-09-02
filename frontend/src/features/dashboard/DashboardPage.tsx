@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 
 import { APIError, request, type AlertList, type Dashboard } from '../../shared/api/client'
 import { systemStatusQueryKey, useSystemStatusQuery } from '../../shared/queries/systemStatus'
-import { RealtimePanel } from './RealtimePanel'
 
 const candidateReasonLabels = new Map([
   ['BREAKOUT_MA20_WITH_VOLUME', '放量突破20日均线'],
@@ -31,7 +30,7 @@ function isStale(tradeDate: string) {
 }
 
 export function DashboardPage() {
-  return <div className="page-stack"><RealtimePanel /><DailyDashboard /></div>
+  return <div className="page-stack"><DailyDashboard /></div>
 }
 
 function DailyDashboard() {

@@ -26,7 +26,7 @@ class RealtimeRefresh(Base):
     __tablename__ = "realtime_refresh"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    scope: Mapped[str] = mapped_column(String(16), default="market", index=True)
+    scope: Mapped[str] = mapped_column(String(16), default="watchlist", index=True)
     requested_symbols: Mapped[list[str]] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(String(16), default="FETCHING")
     stage: Mapped[str] = mapped_column(String(16), default="STOCKS")
@@ -41,7 +41,7 @@ class RealtimeRefresh(Base):
 class RealtimeSnapshot(Base):
     __tablename__ = "realtime_snapshot"
 
-    # id=1 全市场、id=2 自选股；分别原子替换，不向日线批次写入盘中数据。
+    # id=2 为自选股快照；旧 id=1 全市场快照保留但不再读取或更新。
     id: Mapped[int] = mapped_column(primary_key=True)
     summary: Mapped[dict[str, Any]] = mapped_column(JSON)
     quotes: Mapped[list[dict[str, Any]]] = mapped_column(JSON)

@@ -124,81 +124,18 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: '刷新自选股行情' })).toBeDisabled()
   })
 
-  it('刷新全市场并展示来源时间，搜索和翻页不触发日线同步', async () => {
-    let submitted = false
+  it('首页不展示或请求全市场实时报价', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
-      if (url.endsWith('/realtime/refresh')) {
-        submitted = true
-        return Response.json({ ...realtimeJob, status: 'FETCHING', stage: 'STOCKS' })
-      }
-      if (url.endsWith('/realtime/status')) return Response.json({
-        job: submitted ? realtimeJob : null, snapshot: submitted ? realtimeSnapshot : null, cooldown_until: null,
-      })
-      if (url.includes('/realtime/quotes?')) return Response.json({
-        snapshot: realtimeSnapshot, items: [realtimeRow], total: 5550, page: 1, page_size: 50,
-      })
       if (url.includes('/alerts?')) return Response.json({ ...dashboard, items: [] })
       return Response.json(dashboard)
     })
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
-    const button = await screen.findByRole('button', { name: '刷新实时行情' })
-    await waitFor(() => expect(button).toBeEnabled())
-    await userEvent.click(button)
-    expect(await screen.findByText('覆盖 5550/5550 只')).toBeInTheDocument()
-    const table = await screen.findByRole('table', { name: '全市场报价列表' })
-    expect(within(table).getByText('2026-08-28 11:09:52')).toBeInTheDocument()
-    expect(within(table).getByText('9.01')).toBeInTheDocument()
-    expect(screen.getByText('交易日 2025-03-31')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: '下一页报价' }))
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/realtime/quotes?page=2&page_size=50&q=', expect.anything()))
-    await userEvent.type(screen.getByLabelText('实时行情搜索'), '600000')
-    await userEvent.click(screen.getByRole('button', { name: '查询报价' }))
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/realtime/quotes?page=1&page_size=50&q=600000', expect.anything()))
-    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/sync-jobs'))).toBe(false)
-  })
-
-  it('实时刷新失败保留旧快照，旧报价不会被标为当前报价', async () => {
-    let failed = false
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url.endsWith('/realtime/refresh')) {
-        failed = true
-        return Response.json({ ...realtimeJob, id: 2, status: 'FETCHING' })
-      }
-      if (url.endsWith('/realtime/status')) return Response.json({
-        job: failed ? { ...realtimeJob, id: 2, status: 'FAILED', error_summary: '数据源暂不可用' } : realtimeJob,
-        snapshot: realtimeSnapshot, cooldown_until: null,
-      })
-      if (url.includes('/realtime/quotes?')) return Response.json({
-        snapshot: realtimeSnapshot, items: [{ ...realtimeRow, quoted_at: '2025-03-31T15:00:00+08:00' }],
-        total: 1, page: 1, page_size: 50,
-      })
-      if (url.includes('/alerts?')) return Response.json({ ...dashboard, items: [] })
-      return Response.json(dashboard)
-    }))
-    render(<App />)
-    expect(await screen.findByText('非今日报价')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: '刷新实时行情' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('数据源暂不可用。当前展示上次成功快照')
-    expect(screen.getByText('9.01')).toBeInTheDocument()
-    expect(screen.getByText('2025-03-31 15:00:00')).toBeInTheDocument()
-  })
-
-  it('没有日线数据也能刷新实时行情，采集中禁止重复点击', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url.endsWith('/realtime/status')) return Response.json({
-        job: { ...realtimeJob, status: 'FETCHING', stage: 'QUOTES', completed_count: 100 },
-        snapshot: null, cooldown_until: null,
-      })
-      return Response.json({ error: { code: 'NO_ACTIVE_BATCH', message: '当前没有可用数据批次' } }, { status: 409 })
-    }))
-    render(<App />)
-    expect(await screen.findByText('尚无有效数据批次')).toBeInTheDocument()
-    expect(await screen.findByRole('button', { name: '正在刷新实时行情…' })).toBeDisabled()
-    expect(screen.getByText('采集报价 100/5550（2%）')).toBeInTheDocument()
+    expect(await screen.findByText('交易日 2025-03-31')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '刷新实时行情' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('table', { name: '全市场报价列表' })).not.toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/realtime/'))).toBe(false)
   })
 
   it.each([
@@ -404,7 +341,7 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: '同步最新交易日' })).toBeEnabled()
   })
 
-  it('renders the daily batch separately from the realtime refresh action', async () => {
+  it('renders the daily batch without a market realtime refresh action', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
@@ -423,8 +360,8 @@ describe('App', () => {
     expect(await screen.findByText('600000')).toBeInTheDocument()
     expect(screen.getByText('交易日 2025-03-31')).toBeInTheDocument()
     expect(screen.getByText('历史数据')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '刷新实时行情' })).toBeInTheDocument()
-    expect(screen.getByText(/指标、筛选和报告仍使用收盘日线/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '刷新实时行情' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '同步最新交易日' })).toBeInTheDocument()
   })
 
   it('shows the sync guide for the explicit no-active-batch error', async () => {
