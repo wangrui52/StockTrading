@@ -93,11 +93,15 @@ class SyncJob(Base):
 
 class DataBatch(Base):
     __tablename__ = "data_batch"
+    __mapper_args__ = {"eager_defaults": False}
     __table_args__ = (
         Index("uq_data_batch_active", "is_active", unique=True, sqlite_where=text("is_active = 1")),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    parent_batch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("data_batch.id"), index=True, server_default=text("NULL")
+    )
     source: Mapped[str] = mapped_column(String(64), default="unknown")
     trade_date: Mapped[date] = mapped_column(Date, index=True)
     status: Mapped[str] = mapped_column(String(16), default="BUILDING")
@@ -150,6 +154,24 @@ class IndexDaily(Base):
     low: Mapped[float] = mapped_column(Float)
     close: Mapped[float] = mapped_column(Float)
     pct_change: Mapped[float | None] = mapped_column(Float)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
+class MarketBreadthSnapshot(Base):
+    __tablename__ = "market_breadth_snapshot"
+    __table_args__ = (UniqueConstraint("source", "trade_date", "scope"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(64))
+    trade_date: Mapped[date] = mapped_column(Date, index=True)
+    scope: Mapped[str] = mapped_column(String(16), default="ALL")
+    up_count: Mapped[int] = mapped_column(Integer)
+    down_count: Mapped[int] = mapped_column(Integer)
+    flat_count: Mapped[int] = mapped_column(Integer)
+    amount: Mapped[float] = mapped_column(Float)
+    is_complete: Mapped[bool] = mapped_column(Boolean, default=True)
     fetched_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
@@ -218,6 +240,41 @@ class CandidateResult(Base):
     positive_event_count: Mapped[int] = mapped_column(Integer, default=0)
     volume_ratio: Mapped[float | None] = mapped_column(Float)
     pct_change: Mapped[float | None] = mapped_column(Float)
+
+
+class AIRecommendationRun(Base):
+    __tablename__ = "ai_recommendation_run"
+    __table_args__ = (UniqueConstraint("batch_id", "version"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("data_batch.id"), index=True)
+    scope: Mapped[str] = mapped_column(String(16), default="candidate")
+    version: Mapped[int] = mapped_column(Integer)
+    provider: Mapped[str] = mapped_column(String(32))
+    model: Mapped[str] = mapped_column(String(128))
+    prompt_version: Mapped[str] = mapped_column(String(64))
+    evidence_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON)
+    evidence_hash: Mapped[str] = mapped_column(String(64))
+    generated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
+class AIRecommendation(Base):
+    __tablename__ = "ai_recommendation"
+    __table_args__ = (UniqueConstraint("run_id", "market", "stock_code"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("ai_recommendation_run.id"), index=True)
+    market: Mapped[str] = mapped_column(String(8))
+    stock_code: Mapped[str] = mapped_column(String(16))
+    recommendation: Mapped[str] = mapped_column(String(16))
+    ai_score: Mapped[int] = mapped_column(Integer)
+    horizon_trading_days: Mapped[int] = mapped_column(Integer)
+    reasons: Mapped[list[str]] = mapped_column(JSON)
+    risks: Mapped[list[str]] = mapped_column(JSON)
+    invalidation: Mapped[str] = mapped_column(Text)
+    confidence: Mapped[float] = mapped_column(Float)
 
 
 class CandidateOutcome(Base):

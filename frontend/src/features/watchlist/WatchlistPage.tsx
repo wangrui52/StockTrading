@@ -10,6 +10,26 @@ const timeFormat = new Intl.DateTimeFormat('sv-SE', {
 })
 const displayTime = (value: string | number) => timeFormat.format(new Date(value))
 
+const aiRecommendationLabels: Record<string, { label: string; tone: string }> = {
+  FOCUS: { label: '重点关注', tone: 'success' },
+  WATCH: { label: '继续观察', tone: 'warning' },
+  AVOID: { label: '暂时回避', tone: 'danger' },
+}
+
+function AIAnalysis({ item }: { item: Watchlist['items'][number]['ai_analysis'] }) {
+  if (!item) return <span className="muted">尚未生成</span>
+  const presentation = aiRecommendationLabels[item.recommendation] ?? {
+    label: item.recommendation,
+    tone: 'warning',
+  }
+  return <div className="ai-review">
+    <span className={`status-tag ${presentation.tone}`.trim()}>{presentation.label} · {item.ai_score}分</span>
+    <small>{item.reasons.join(' / ')}</small>
+    <small className="warning">风险：{item.risks.join(' / ')}</small>
+    <small className="muted">失效：{item.invalidation}</small>
+  </div>
+}
+
 export function WatchlistPage() {
   const client = useQueryClient()
   const [code, setCode] = useState('')
@@ -86,7 +106,7 @@ export function WatchlistPage() {
       {items.isPending ? <p role="status">正在读取自选…</p> : items.isError ? <p role="alert">自选读取失败。</p> : items.data?.items?.length ? <div className="table-wrap">
         <table aria-label="自选股行情"><thead><tr>
           <th>股票</th><th>分组</th><th>最新价 / 参考价</th><th>涨跌幅</th><th>行情时间（北京）</th>
-          <th>主要信号（日线）</th><th>风险（日线）</th><th>提醒</th><th />
+          <th>主要信号（日线）</th><th>风险（日线）</th><th>AI分析</th><th>提醒</th><th />
         </tr></thead><tbody>{items.data.items.map((item) => {
           const quote = item.realtime
           const price = quote ? quote.latest_price : item.close
@@ -100,6 +120,7 @@ export function WatchlistPage() {
             <td>{quotedAt ?? item.trade_date ?? '--'}{quotedAt && quotedAt.slice(0, 10) !== today && <small className="realtime-warning">非今日报价</small>}{!quote && <small>尚无实时报价，请刷新</small>}</td>
             <td>{item.signal_codes.join(' / ') || '--'}<small>日线 {item.trade_date ?? '--'}</small></td>
             <td><span className={`status-tag ${item.risk_level === 'high' ? 'warning' : ''}`}>{item.risk_level ?? '--'}</span></td>
+            <td><AIAnalysis item={item.ai_analysis} /></td>
             <td>{item.alert_status}</td>
             <td><button type="button" onClick={() => remove.mutate(item.id)}>移除</button></td>
           </tr>

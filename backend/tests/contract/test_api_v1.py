@@ -156,6 +156,8 @@ def session_factory() -> Generator[sessionmaker[Session]]:
                 stock_code="600000",
                 score=3,
                 reasons=["MACD_GOLDEN_CROSS"],
+                volume_ratio=1.3,
+                pct_change=2.0,
             )
         )
         session.add(
@@ -186,6 +188,187 @@ def assert_context(payload: dict[str, object]) -> None:
     assert payload["trade_date"] == "2025-03-31"
     assert payload["batch_id"] == 1
     assert payload["rule_version"] == "v1"
+
+
+def test_dashboard_candidate_exposes_factual_evidence_for_ai_review(client: TestClient) -> None:
+    response = client.get("/api/v1/dashboard")
+
+    assert response.status_code == 200
+    candidate = response.json()["candidates"][0]
+    assert candidate["close"] == 10.2
+    assert candidate["pct_change"] == 2.0
+    assert candidate["rsi14"] == 60.0
+    assert candidate["volume_ratio"] == 1.3
+
+
+def test_codex_cli_recommendations_can_be_imported_for_active_batch(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/v1/ai-recommendations/import",
+        json={
+            "batch_id": 1,
+            "provider": "codex_cli",
+            "model": "codex-default",
+            "prompt_version": "candidate-review-v1",
+            "evidence_snapshot": {
+                "batch_id": 1,
+                "candidates": [
+                    {
+                        "market": "SH",
+                        "stock_code": "600000",
+                        "evidence": {
+                            "rule_score": 3,
+                            "rsi14": 60,
+                        },
+                    }
+                ],
+            },
+            "items": [
+                {
+                    "market": "SH",
+                    "stock_code": "600000",
+                    "recommendation": "FOCUS",
+                    "ai_score": 82,
+                    "horizon_trading_days": 5,
+                    "reasons": ["规则得分为3，且RSI处于候选区间"],
+                    "risks": ["缺少基本面数据"],
+                    "invalidation": "收盘价跌破MA20",
+                    "confidence": 0.76,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json() == {"batch_id": 1, "imported_count": 1, "run_id": 1}
+
+
+def test_dashboard_exposes_latest_codex_cli_recommendation(client: TestClient) -> None:
+    payload = {
+        "batch_id": 1,
+        "provider": "codex_cli",
+        "model": "codex-default",
+        "prompt_version": "candidate-review-v1",
+        "evidence_snapshot": {
+            "batch_id": 1,
+            "candidates": [{"market": "SH", "stock_code": "600000"}],
+        },
+        "items": [
+            {
+                "market": "SH",
+                "stock_code": "600000",
+                "recommendation": "WATCH",
+                "ai_score": 68,
+                "horizon_trading_days": 3,
+                "reasons": ["趋势仍为正向"],
+                "risks": ["成交量确认不足"],
+                "invalidation": "MA5跌破MA20",
+                "confidence": 0.64,
+            }
+        ],
+    }
+    assert client.post("/api/v1/ai-recommendations/import", json=payload).status_code == 201
+    payload["items"][0]["recommendation"] = "FOCUS"
+    payload["items"][0]["ai_score"] = 84
+    assert client.post("/api/v1/ai-recommendations/import", json=payload).status_code == 201
+
+    response = client.get("/api/v1/dashboard")
+
+    assert response.status_code == 200
+    recommendation = response.json()["candidates"][0]["ai_recommendation"]
+    assert recommendation == {
+        "recommendation": "FOCUS",
+        "ai_score": 84,
+        "horizon_trading_days": 3,
+        "reasons": ["趋势仍为正向"],
+        "risks": ["成交量确认不足"],
+        "invalidation": "MA5跌破MA20",
+        "confidence": 0.64,
+        "provider": "codex_cli",
+        "model": "codex-default",
+        "run_version": 2,
+    }
+
+
+def test_ai_import_rejects_stock_missing_from_evidence_snapshot(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/ai-recommendations/import",
+        json={
+            "batch_id": 1,
+            "provider": "codex_cli",
+            "model": "codex-default",
+            "prompt_version": "candidate-review-v1",
+            "evidence_snapshot": {"batch_id": 1, "candidates": []},
+            "items": [
+                {
+                    "market": "SH",
+                    "stock_code": "600000",
+                    "recommendation": "WATCH",
+                    "ai_score": 50,
+                    "horizon_trading_days": 3,
+                    "reasons": ["证据有限"],
+                    "risks": ["证据有限"],
+                    "invalidation": "趋势失效",
+                    "confidence": 0.4,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "AI_EVIDENCE_MISMATCH"
+
+
+def test_watchlist_exposes_latest_codex_ai_analysis(client: TestClient) -> None:
+    assert client.post(
+        "/api/v1/watchlist/items",
+        json={"group_id": 1, "market": "SH", "stock_code": "600000"},
+    ).status_code == 201
+    imported = client.post(
+        "/api/v1/ai-recommendations/import",
+        json={
+            "batch_id": 1,
+            "scope": "watchlist",
+            "provider": "codex_cli",
+            "model": "codex-default",
+            "prompt_version": "watchlist-review-v1",
+            "evidence_snapshot": {
+                "batch_id": 1,
+                "scope": "watchlist",
+                "stocks": [{"market": "SH", "stock_code": "600000"}],
+            },
+            "items": [
+                {
+                    "market": "SH",
+                    "stock_code": "600000",
+                    "recommendation": "WATCH",
+                    "ai_score": 66,
+                    "horizon_trading_days": 3,
+                    "reasons": ["MACD信号为正向"],
+                    "risks": ["缺少基本面数据"],
+                    "invalidation": "收盘价跌破MA20",
+                    "confidence": 0.62,
+                }
+            ],
+        },
+    )
+    assert imported.status_code == 201
+
+    item = client.get("/api/v1/watchlist/items").json()["items"][0]
+
+    assert item["ai_analysis"] == {
+        "recommendation": "WATCH",
+        "ai_score": 66,
+        "horizon_trading_days": 3,
+        "reasons": ["MACD信号为正向"],
+        "risks": ["缺少基本面数据"],
+        "invalidation": "收盘价跌破MA20",
+        "confidence": 0.62,
+        "provider": "codex_cli",
+        "model": "codex-default",
+        "run_version": 1,
+    }
 
 
 def test_dashboard_candidate_names_match_market_and_keep_missing_stocks(

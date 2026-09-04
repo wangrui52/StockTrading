@@ -2,10 +2,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.adapters.sqlalchemy_repositories import SQLAlchemyReportStore
+from app.application.batch_snapshot import indicator_rows, price_rows
 from app.infrastructure.models import (
     AnalysisReport,
-    DailyIndicator,
-    DailyPrice,
     DataBatch,
     SignalEvent,
 )
@@ -14,23 +13,24 @@ from app.infrastructure.models import (
 def create_stock_report(
     session: Session, batch: DataBatch, *, market: str, stock_code: str
 ) -> AnalysisReport:
-    price = session.scalar(
-        select(DailyPrice).where(
-            DailyPrice.batch_id == batch.id,
-            DailyPrice.market == market,
-            DailyPrice.stock_code == stock_code,
-            DailyPrice.trade_date == batch.trade_date,
-            DailyPrice.adjustment == "raw",
-        )
+    prices = price_rows(
+        session,
+        batch.id,
+        market=market,
+        stock_code=stock_code,
+        trade_date=batch.trade_date,
+        adjustment="raw",
     )
-    indicator = session.scalar(
-        select(DailyIndicator).where(
-            DailyIndicator.batch_id == batch.id,
-            DailyIndicator.market == market,
-            DailyIndicator.stock_code == stock_code,
-            DailyIndicator.trade_date == batch.trade_date,
-        )
+    price = prices[0] if prices else None
+    indicators = indicator_rows(
+        session,
+        batch.id,
+        market=market,
+        stock_code=stock_code,
+        trade_date=batch.trade_date,
+        rule_version=batch.rule_version,
     )
+    indicator = indicators[0] if indicators else None
     signals = session.scalars(
         select(SignalEvent).where(
             SignalEvent.batch_id == batch.id,

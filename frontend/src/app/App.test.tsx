@@ -124,6 +124,35 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: '刷新自选股行情' })).toBeDisabled()
   })
 
+  it('自选股列表展示最新Codex AI分析', async () => {
+    window.history.replaceState({}, '', '/watchlist')
+    const aiAnalysis = {
+      recommendation: 'WATCH', ai_score: 66, horizon_trading_days: 3,
+      reasons: ['MACD信号为正向'], risks: ['缺少基本面数据'],
+      invalidation: '收盘价跌破MA20', confidence: 0.62,
+      provider: 'codex_cli', model: 'codex-account-default', run_version: 1,
+    }
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/watchlist/items')) return Response.json({
+        items: [{ ...watchedStock, ai_analysis: aiAnalysis }],
+      })
+      if (url.endsWith('/realtime/status?scope=watchlist')) return Response.json({
+        job: null, snapshot: null, cooldown_until: null,
+      })
+      return Response.json({ items: [{ id: 1, name: '默认' }] })
+    }))
+
+    render(<App />)
+
+    const table = await screen.findByRole('table', { name: '自选股行情' })
+    expect(within(table).getByRole('columnheader', { name: 'AI分析' })).toBeInTheDocument()
+    expect(within(table).getByText('继续观察 · 66分')).toHaveClass('status-tag', 'warning')
+    expect(within(table).getByText('MACD信号为正向')).toBeInTheDocument()
+    expect(within(table).getByText('风险：缺少基本面数据')).toBeInTheDocument()
+    expect(within(table).getByText('失效：收盘价跌破MA20')).toBeInTheDocument()
+  })
+
   it('首页不展示或请求全市场实时报价', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
@@ -170,6 +199,32 @@ describe('App', () => {
     expect(screen.queryByText(/BREAKOUT_MA20_WITH_VOLUME/)).not.toBeInTheDocument()
   })
 
+  it('候选股列表区分展示规则评分和Codex AI评审', async () => {
+    const candidate = {
+      ...dashboard.candidates[0],
+      ai_recommendation: {
+        recommendation: 'FOCUS', ai_score: 82, horizon_trading_days: 5,
+        reasons: ['趋势信号一致'], risks: ['市场下跌家数较多'],
+        invalidation: '跌破MA20', confidence: 0.76,
+        provider: 'codex_cli', model: 'codex-account-default', run_version: 1,
+      },
+    }
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/alerts?')) return Response.json({ ...dashboard, items: [] })
+      return Response.json({ ...dashboard, candidates: [candidate] })
+    }))
+
+    render(<App />)
+
+    const table = await screen.findByRole('table')
+    expect(within(table).getByRole('columnheader', { name: '规则分' })).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'AI评审' })).toBeInTheDocument()
+    expect(within(table).getByText('重点关注 · 82分')).toHaveClass('status-tag', 'success')
+    expect(within(table).getByText('趋势信号一致')).toBeInTheDocument()
+    expect(within(table).getByText('风险：市场下跌家数较多')).toBeInTheDocument()
+    expect(within(table).getByText('失效：跌破MA20')).toBeInTheDocument()
+  })
+
   it('候选股列表展示四种后续表现状态，未知状态安全回退', async () => {
     const candidates = [
       { ...dashboard.candidates[0], stock_code: '600000', outcome_status: 'PENDING' },
@@ -204,7 +259,8 @@ describe('App', () => {
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
     expect(await screen.findByText('演示数据（非真实行情）')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: '同步最新交易日' }))
+    expect(screen.getByText('仅增量保存新增或修订行情')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '更新全市场策略数据' }))
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/sync-jobs', expect.objectContaining({
       method: 'POST', body: '{}',
     }))
@@ -230,7 +286,7 @@ describe('App', () => {
         trade_date: ready ? '2026-08-27' : '2025-03-31' })
     }))
     render(<App />)
-    await userEvent.click(await screen.findByRole('button', { name: '同步最新交易日' }))
+    await userEvent.click(await screen.findByRole('button', { name: '更新全市场策略数据' }))
     await waitFor(() => expect(screen.getByText('交易日 2026-08-27')).toBeInTheDocument(), { timeout: 5000 })
   })
 
@@ -274,7 +330,7 @@ describe('App', () => {
     }))
     render(<App />)
 
-    await userEvent.click(await screen.findByRole('button', { name: '同步最新交易日' }))
+    await userEvent.click(await screen.findByRole('button', { name: '更新全市场策略数据' }))
     await userEvent.click(screen.getByRole('link', { name: '策略效果' }))
 
     expect(await screen.findByText('数据日期 2026-09-01', {}, { timeout: 5000 })).toBeInTheDocument()
@@ -335,10 +391,10 @@ describe('App', () => {
       return Response.json(dashboard)
     }))
     render(<App />)
-    await userEvent.click(await screen.findByRole('button', { name: '同步最新交易日' }))
+    await userEvent.click(await screen.findByRole('button', { name: '更新全市场策略数据' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('交易日历暂时不可用')
     expect(screen.getByText('交易日 2025-03-31')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '同步最新交易日' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '更新全市场策略数据' })).toBeEnabled()
   })
 
   it('renders the daily batch without a market realtime refresh action', async () => {
@@ -361,7 +417,7 @@ describe('App', () => {
     expect(screen.getByText('交易日 2025-03-31')).toBeInTheDocument()
     expect(screen.getByText('历史数据')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '刷新实时行情' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '同步最新交易日' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '更新全市场策略数据' })).toBeInTheDocument()
   })
 
   it('shows the sync guide for the explicit no-active-batch error', async () => {

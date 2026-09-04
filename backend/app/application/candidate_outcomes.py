@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy import Select, and_, case, exists, func, or_, select, tuple_
 from sqlalchemy.orm import Session, aliased, sessionmaker
 
+from app.application.batch_snapshot import batch_lineage_ids
 from app.domain.outcomes import CompletedOutcome, OutcomeBar, calculate_outcome
 from app.infrastructure.models import (
     CandidateOutcome,
@@ -907,7 +908,9 @@ class CandidateOutcomeModule:
             session.scalars(
                 select(DailyPrice.trade_date)
                 .where(
-                    DailyPrice.batch_id == evaluation_batch.id,
+                    DailyPrice.batch_id.in_(
+                        batch_lineage_ids(session, evaluation_batch.id)
+                    ),
                     DailyPrice.adjustment == "raw",
                 )
                 .distinct()
@@ -1032,7 +1035,9 @@ class CandidateOutcomeModule:
             session.scalars(
                 select(DailyPrice.trade_date)
                 .where(
-                    DailyPrice.batch_id == evaluation_batch.id,
+                    DailyPrice.batch_id.in_(
+                        batch_lineage_ids(session, evaluation_batch.id)
+                    ),
                     DailyPrice.adjustment == "raw",
                 )
                 .distinct()
@@ -1047,21 +1052,26 @@ class CandidateOutcomeModule:
         required_price_keys: set[tuple[str, str, date]],
     ) -> dict[tuple[str, str, date], DailyPrice]:
         prices: dict[tuple[str, str, date], DailyPrice] = {}
+        lineage = batch_lineage_ids(session, evaluation_batch_id)
+        rank = {value: index for index, value in enumerate(lineage)}
         sorted_price_keys = sorted(required_price_keys)
         for price_key_chunk in CandidateOutcomeModule._chunks(
             sorted_price_keys,
             _PRICE_KEY_CHUNK_SIZE,
         ):
-            loaded_prices = session.scalars(
-                select(DailyPrice).where(
-                    DailyPrice.batch_id == evaluation_batch_id,
-                    DailyPrice.adjustment == "raw",
-                    tuple_(
-                        DailyPrice.market,
-                        DailyPrice.stock_code,
-                        DailyPrice.trade_date,
-                    ).in_(price_key_chunk),
-                )
+            loaded_prices = sorted(
+                session.scalars(
+                    select(DailyPrice).where(
+                        DailyPrice.batch_id.in_(lineage),
+                        DailyPrice.adjustment == "raw",
+                        tuple_(
+                            DailyPrice.market,
+                            DailyPrice.stock_code,
+                            DailyPrice.trade_date,
+                        ).in_(price_key_chunk),
+                    )
+                ),
+                key=lambda item: rank[item.batch_id],
             )
             prices.update(
                 {

@@ -3,13 +3,16 @@ from dataclasses import replace
 from datetime import date, timedelta
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 import app.application.sync_pipeline as sync_pipeline_application
 import scripts.run_scheduler as scheduler_script
 from app.adapters.fake_market_data import FakeMarketDataGateway
+from app.application.batch_snapshot import price_rows, signal_rows
 from app.application.candidate_outcomes import CandidateOutcomeModule
+from app.application.dashboard import dashboard_payload
 from app.application.sync_pipeline import NonTradingDayError, SyncPipeline
 from app.infrastructure.database import create_sqlite_memory_session_factory
 from app.infrastructure.models import (
@@ -19,13 +22,14 @@ from app.infrastructure.models import (
     DailyIndicator,
     DailyPrice,
     DataBatch,
+    MarketBreadthSnapshot,
     OutcomeRun,
     SignalEvent,
     StockBasic,
     SyncJob,
     TradeCalendar,
 )
-from app.main import recover_interrupted_jobs
+from app.main import create_app, recover_interrupted_jobs
 from app.ports.market_data import (
     MarketDataUnavailable,
     PriceRecord,
@@ -179,18 +183,14 @@ def test_incremental_sync_preserves_verified_historical_daily_changes(
     }
     result = SyncPipeline(session_factory, second).run(target)
     with session_factory() as session:
-        change = session.scalar(
-            select(DailyPrice.pct_change).where(
-                DailyPrice.batch_id == result.batch_id, DailyPrice.trade_date == yesterday
-            )
+        change = next(
+            item.pct_change
+            for item in price_rows(session, result.batch_id, trade_date=yesterday)
         )
         assert change == 6.0
-        assert session.scalar(
-            select(SignalEvent.id).where(
-                SignalEvent.batch_id == result.batch_id,
-                SignalEvent.trade_date == yesterday,
-                SignalEvent.rule_code == "DAILY_SURGE",
-            )
+        assert any(
+            item.trade_date == yesterday and item.rule_code == "DAILY_SURGE"
+            for item in signal_rows(session, result.batch_id)
         )
 
 
@@ -267,10 +267,19 @@ def test_successful_sync_calculates_and_activates_complete_batch(
         assert batch.completeness_rate == 1.0
         assert job is not None and job.status == "READY" and job.stage == "READY"
         assert session.scalar(select(func.count(DailyPrice.id))) == 130
-        assert session.scalar(select(func.count(DailyIndicator.id))) == 130
+        assert session.scalar(select(func.count(DailyIndicator.id))) == 2
         assert session.scalar(select(func.count(SignalEvent.id))) >= 0
         assert session.scalar(select(func.count(CandidateResult.id))) >= 0
         assert session.scalar(select(TradeCalendar.is_open)) is True
+        breadth = session.scalar(select(MarketBreadthSnapshot))
+        assert breadth is not None
+        assert (breadth.up_count, breadth.down_count, breadth.flat_count) == (2, 0, 0)
+        assert dashboard_payload(session, batch)["market_summary"] == {
+            "up": 2,
+            "down": 0,
+            "flat": 0,
+            "amount": 3_280_000,
+        }
 
 
 def test_successful_sync_persists_authoritative_calendar_for_price_history_range(
@@ -304,6 +313,22 @@ def test_successful_sync_persists_authoritative_calendar_for_price_history_range
     assert len(rows) == (target - min(history_dates)).days + 1
     assert dict(rows)[missing_open_day] is False
     assert all(dict(rows)[value] is True for value in source.open_dates)
+
+
+def test_market_breadth_is_hidden_when_daily_changes_are_incomplete(session_factory) -> None:
+    target = date(2025, 3, 31)
+    source = gateway(target)
+    source.histories = {
+        code: [replace(item, pct_change=None) for item in rows]
+        for code, rows in source.histories.items()
+    }
+    result = SyncPipeline(session_factory, source).run(target)
+
+    with session_factory() as session:
+        batch = session.get(DataBatch, result.batch_id)
+        snapshot = session.scalar(select(MarketBreadthSnapshot))
+        assert snapshot is not None and not snapshot.is_complete
+        assert dashboard_payload(session, batch)["market_summary"] is None
 
 
 def test_legacy_provider_persists_each_natural_day_via_is_trade_date(
@@ -623,6 +648,8 @@ def test_next_trade_date_fetches_incrementally_and_merges_revisions(
         next_target - timedelta(days=10),
     ]
     with session_factory() as session:
+        second_batch = session.get(DataBatch, second.batch_id)
+        assert second_batch.parent_batch_id == first.batch_id
         old_close = session.scalar(
             select(DailyPrice.close).where(
                 DailyPrice.batch_id == first.batch_id,
@@ -643,8 +670,27 @@ def test_next_trade_date_fetches_incrementally_and_merges_revisions(
             session.scalar(
                 select(func.count(DailyPrice.id)).where(DailyPrice.batch_id == second.batch_id)
             )
-            == 132
+            == 3
         )
+        assert session.scalar(select(func.count(DailyPrice.id))) == 133
+        assert (
+            session.scalar(
+                select(func.count(DailyIndicator.id)).where(
+                    DailyIndicator.batch_id == second.batch_id
+                )
+            )
+            == 2
+        )
+
+    response = TestClient(create_app(session_factory=session_factory)).get(
+        "/api/v1/stocks/SH/600000/prices"
+    )
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert len(items) == 66
+    assert next(
+        item for item in items if item["trade_date"] == first_target.isoformat()
+    )["close"] == 99.0
 
 
 def test_non_trading_day_does_not_create_batch(session_factory: sessionmaker[Session]) -> None:

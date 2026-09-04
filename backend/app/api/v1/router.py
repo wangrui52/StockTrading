@@ -1,11 +1,14 @@
+import hashlib
+import json
 import logging
+from dataclasses import asdict
 from datetime import UTC, date, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response, status
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import select, tuple_
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.orm import Session
 
 from app.adapters.sqlalchemy_repositories import SQLAlchemyBatchStore, SQLAlchemySignalStore
@@ -29,6 +32,7 @@ from app.api.v1.schemas import (
     WatchlistItemResponse,
     WatchlistResponse,
 )
+from app.application.batch_snapshot import indicator_rows, price_rows, signal_rows
 from app.application.dashboard import (
     active_batch,
     context,
@@ -39,11 +43,14 @@ from app.application.realtime import SNAPSHOT_IDS
 from app.application.reports import create_stock_report
 from app.application.screening import screen
 from app.application.watchlist import add_item, list_items
+from app.domain.indicators import IndicatorEngine
+from app.domain.market import MarketBar
 from app.infrastructure.models import (
+    AIRecommendation,
+    AIRecommendationRun,
     AlertEventState,
     AnalysisReport,
     CandidateResult,
-    DailyIndicator,
     DailyPrice,
     DataBatch,
     OperationLog,
@@ -138,6 +145,34 @@ class BatchActivationRequest(BaseModel):
     force: bool = False
 
 
+class AIRecommendationItemImport(BaseModel):
+    market: str = Field(min_length=1, max_length=8)
+    stock_code: str = Field(min_length=1, max_length=16)
+    recommendation: Literal["FOCUS", "WATCH", "AVOID"]
+    ai_score: int = Field(ge=0, le=100)
+    horizon_trading_days: Literal[1, 3, 5]
+    reasons: list[str] = Field(min_length=1, max_length=8)
+    risks: list[str] = Field(min_length=1, max_length=8)
+    invalidation: str = Field(min_length=1, max_length=500)
+    confidence: float = Field(ge=0, le=1)
+
+
+class AIRecommendationImportRequest(BaseModel):
+    batch_id: int
+    scope: Literal["candidate", "watchlist"] = "candidate"
+    provider: Literal["codex_cli"]
+    model: str = Field(min_length=1, max_length=128)
+    prompt_version: str = Field(min_length=1, max_length=64)
+    evidence_snapshot: dict[str, Any]
+    items: list[AIRecommendationItemImport] = Field(min_length=1, max_length=20)
+
+
+class AIRecommendationImportResponse(BaseModel):
+    batch_id: int
+    imported_count: int
+    run_id: int
+
+
 @router.get("/health", response_model=HealthResponse)
 def health() -> dict[str, str]:
     return {
@@ -160,6 +195,82 @@ def require_batch(db: Session) -> DataBatch:
     if batch is None:
         raise APIError(409, "NO_ACTIVE_BATCH", "当前没有可用数据批次")
     return batch
+
+
+@router.post(
+    "/ai-recommendations/import",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AIRecommendationImportResponse,
+)
+def import_ai_recommendations(
+    payload: AIRecommendationImportRequest, db: SessionDep
+) -> dict[str, int]:
+    batch = require_batch(db)
+    if payload.batch_id != batch.id or payload.evidence_snapshot.get("batch_id") != batch.id:
+        raise APIError(409, "AI_BATCH_MISMATCH", "AI 推荐必须属于当前激活批次")
+    symbols = [(item.market, item.stock_code) for item in payload.items]
+    if len(symbols) != len(set(symbols)):
+        raise APIError(422, "AI_DUPLICATE_SYMBOL", "AI 推荐中存在重复股票")
+    evidence_key = "candidates" if payload.scope == "candidate" else "stocks"
+    evidence_candidates = payload.evidence_snapshot.get(evidence_key)
+    evidence_symbols = {
+        (item.get("market"), item.get("stock_code"))
+        for item in evidence_candidates
+        if isinstance(item, dict)
+    } if isinstance(evidence_candidates, list) else set()
+    if not set(symbols) <= evidence_symbols:
+        raise APIError(422, "AI_EVIDENCE_MISMATCH", "AI 推荐缺少对应的候选证据")
+    if payload.scope == "candidate":
+        known_symbols = set(
+            db.execute(
+                select(CandidateResult.market, CandidateResult.stock_code).where(
+                    CandidateResult.batch_id == batch.id,
+                    tuple_(CandidateResult.market, CandidateResult.stock_code).in_(symbols),
+                )
+            ).all()
+        )
+    else:
+        known_symbols = set(
+            db.execute(
+                select(WatchlistItem.market, WatchlistItem.stock_code).where(
+                    tuple_(WatchlistItem.market, WatchlistItem.stock_code).in_(symbols)
+                )
+            ).all()
+        )
+    if known_symbols != set(symbols):
+        code = "AI_UNKNOWN_CANDIDATE" if payload.scope == "candidate" else "AI_UNKNOWN_WATCHLIST"
+        raise APIError(422, code, "AI 推荐包含当前分析范围之外的股票")
+    version = (
+        db.scalar(
+            select(func.max(AIRecommendationRun.version)).where(
+                AIRecommendationRun.batch_id == batch.id
+            )
+        )
+        or 0
+    ) + 1
+    canonical_evidence = json.dumps(
+        payload.evidence_snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    run = AIRecommendationRun(
+        batch_id=batch.id,
+        scope=payload.scope,
+        version=version,
+        provider=payload.provider,
+        model=payload.model,
+        prompt_version=payload.prompt_version,
+        evidence_snapshot=payload.evidence_snapshot,
+        evidence_hash=hashlib.sha256(canonical_evidence.encode()).hexdigest(),
+    )
+    db.add(run)
+    db.flush()
+    db.add_all(
+        [
+            AIRecommendation(run_id=run.id, **item.model_dump())
+            for item in payload.items
+        ]
+    )
+    db.commit()
+    return {"batch_id": batch.id, "imported_count": len(payload.items), "run_id": run.id}
 
 
 @router.get("/system/status", response_model=SystemStatusResponse)
@@ -280,23 +391,24 @@ def stock_detail(
     )
     if stock is None:
         raise APIError(404, "STOCK_NOT_FOUND", "股票不存在")
-    price = db.scalar(
-        select(DailyPrice).where(
-            DailyPrice.batch_id == batch.id,
-            DailyPrice.market == market,
-            DailyPrice.stock_code == stock_code,
-            DailyPrice.trade_date == batch.trade_date,
-            DailyPrice.adjustment == "raw",
-        )
+    prices = price_rows(
+        db,
+        batch.id,
+        market=market,
+        stock_code=stock_code,
+        trade_date=batch.trade_date,
+        adjustment="raw",
     )
-    indicator = db.scalar(
-        select(DailyIndicator).where(
-            DailyIndicator.batch_id == batch.id,
-            DailyIndicator.market == market,
-            DailyIndicator.stock_code == stock_code,
-            DailyIndicator.trade_date == batch.trade_date,
-        )
+    price = prices[0] if prices else None
+    indicators = indicator_rows(
+        db,
+        batch.id,
+        market=market,
+        stock_code=stock_code,
+        trade_date=batch.trade_date,
+        rule_version=batch.rule_version,
     )
+    indicator = indicators[0] if indicators else None
     signals = list(
         db.scalars(
             select(SignalEvent).where(
@@ -367,51 +479,67 @@ def stock_detail(
 @router.get("/stocks/{market}/{stock_code}/prices", response_model=PriceSeriesResponse)
 def stock_prices(market: str, stock_code: str, db: SessionDep) -> dict[str, Any]:
     batch = require_batch(db)
-    rows = db.scalars(
-        select(DailyPrice)
-        .where(
-            DailyPrice.batch_id == batch.id,
-            DailyPrice.market == market,
-            DailyPrice.stock_code == stock_code,
-        )
-        .order_by(DailyPrice.trade_date)
-    ).all()
+    rows = price_rows(db, batch.id, market=market, stock_code=stock_code)
     return {**context(batch), "items": [_price_payload(item) for item in rows]}
 
 
 @router.get("/stocks/{market}/{stock_code}/indicators", response_model=IndicatorSeriesResponse)
 def stock_indicators(market: str, stock_code: str, db: SessionDep) -> dict[str, Any]:
     batch = require_batch(db)
-    rows = db.scalars(
-        select(DailyIndicator)
-        .where(
-            DailyIndicator.batch_id == batch.id,
-            DailyIndicator.market == market,
-            DailyIndicator.stock_code == stock_code,
+    prices = price_rows(
+        db, batch.id, market=market, stock_code=stock_code, adjustment="qfq"
+    )
+    rows = (
+        IndicatorEngine().calculate(
+            [
+                MarketBar(
+                    trade_date=item.trade_date,
+                    close_qfq=item.close,
+                    volume=item.volume,
+                    high_qfq=item.high,
+                    pct_change_raw=item.pct_change,
+                    is_suspended=item.is_suspended,
+                )
+                for item in prices
+            ]
         )
-        .order_by(DailyIndicator.trade_date)
-    ).all()
+        if prices
+        else []
+    )
+    if not rows:
+        stored = indicator_rows(
+            db,
+            batch.id,
+            market=market,
+            stock_code=stock_code,
+            rule_version=batch.rule_version,
+        )
+        return {
+            **context(batch),
+            "items": [{"trade_date": item.trade_date, **item.values} for item in stored],
+        }
     return {
         **context(batch),
-        "items": [{"trade_date": item.trade_date, **item.values} for item in rows],
+        "items": [
+            {
+                **asdict(item),
+                "unavailable": sorted(item.unavailable),
+            }
+            for item in rows
+        ],
     }
 
 
 @router.get("/stocks/{market}/{stock_code}/signals", response_model=SignalSeriesResponse)
 def stock_signals(market: str, stock_code: str, db: SessionDep) -> dict[str, Any]:
     batch = require_batch(db)
-    rows = db.scalars(
-        select(SignalEvent)
-        .where(
-            SignalEvent.batch_id == batch.id,
-            SignalEvent.market == market,
-            SignalEvent.stock_code == stock_code,
-            SignalEvent.trade_date <= batch.trade_date,
-            SignalEvent.rule_version == batch.rule_version,
-        )
-        .order_by(SignalEvent.trade_date.desc())
-        .limit(10)
-    ).all()
+    rows = signal_rows(
+        db,
+        batch.id,
+        market=market,
+        stock_code=stock_code,
+        rule_version=batch.rule_version,
+    )[:10]
     return {**context(batch), "items": [_signal_payload(item) for item in rows]}
 
 
@@ -436,9 +564,38 @@ def watchlist_items(db: SessionDep) -> dict[str, Any]:
     batch = active_batch(db)
     snapshot = db.get(RealtimeSnapshot, SNAPSHOT_IDS["watchlist"])
     quotes = {(q["market"], q["stock_code"]): q for q in snapshot.quotes} if snapshot else {}
+    ai_run = (
+        db.scalar(
+            select(AIRecommendationRun)
+            .where(
+                AIRecommendationRun.batch_id == batch.id,
+                AIRecommendationRun.scope == "watchlist",
+            )
+            .order_by(AIRecommendationRun.version.desc())
+        )
+        if batch
+        else None
+    )
+    ai_items = (
+        {
+            (value.market, value.stock_code): value
+            for value in db.scalars(
+                select(AIRecommendation).where(AIRecommendation.run_id == ai_run.id)
+            )
+        }
+        if ai_run
+        else {}
+    )
     return {
         "items": [
-            _watchlist_payload(db, item, batch, realtime=quotes.get((item.market, item.stock_code)))
+            _watchlist_payload(
+                db,
+                item,
+                batch,
+                realtime=quotes.get((item.market, item.stock_code)),
+                ai_analysis=ai_items.get((item.market, item.stock_code)),
+                ai_run=ai_run,
+            )
             for item in list_items(db)
         ]
     }
@@ -592,6 +749,8 @@ def _watchlist_payload(
     batch: DataBatch | None,
     *,
     realtime: dict[str, Any] | None = None,
+    ai_analysis: AIRecommendation | None = None,
+    ai_run: AIRecommendationRun | None = None,
 ) -> dict[str, Any]:
     group = db.get(WatchlistGroup, item.group_id)
     stock = db.scalar(
@@ -603,15 +762,15 @@ def _watchlist_payload(
     price = None
     signals: list[SignalEvent] = []
     if batch is not None:
-        price = db.scalar(
-            select(DailyPrice).where(
-                DailyPrice.batch_id == batch.id,
-                DailyPrice.market == item.market,
-                DailyPrice.stock_code == item.stock_code,
-                DailyPrice.trade_date == batch.trade_date,
-                DailyPrice.adjustment == "raw",
-            )
+        prices = price_rows(
+            db,
+            batch.id,
+            market=item.market,
+            stock_code=item.stock_code,
+            trade_date=batch.trade_date,
+            adjustment="raw",
         )
+        price = prices[0] if prices else None
         signals = list(
             db.scalars(
                 select(SignalEvent).where(
@@ -655,6 +814,22 @@ def _watchlist_payload(
         "risk_level": risk_level,
         "alert_status": alert_status,
         "realtime": realtime,
+        "ai_analysis": (
+            {
+                "recommendation": ai_analysis.recommendation,
+                "ai_score": ai_analysis.ai_score,
+                "horizon_trading_days": ai_analysis.horizon_trading_days,
+                "reasons": ai_analysis.reasons,
+                "risks": ai_analysis.risks,
+                "invalidation": ai_analysis.invalidation,
+                "confidence": ai_analysis.confidence,
+                "provider": ai_run.provider,
+                "model": ai_run.model,
+                "run_version": ai_run.version,
+            }
+            if ai_analysis is not None and ai_run is not None
+            else None
+        ),
     }
 
 

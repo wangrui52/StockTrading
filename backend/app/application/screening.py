@@ -1,30 +1,26 @@
 from collections import defaultdict
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.application.batch_snapshot import indicator_rows, price_rows
 from app.application.dashboard import context
-from app.infrastructure.models import DailyIndicator, DailyPrice, DataBatch, SignalEvent, StockBasic
+from app.infrastructure.models import DailyPrice, DataBatch, SignalEvent, StockBasic
 
 
 def screen(session: Session, batch: DataBatch, criteria: dict[str, Any]) -> dict[str, Any]:
     """只读取已缓存的价格、指标和信号，按 AND 组合条件稳定筛选。"""
-    price_rows = session.scalars(
-        select(DailyPrice).where(
-            DailyPrice.batch_id == batch.id,
-            DailyPrice.trade_date == batch.trade_date,
-            DailyPrice.adjustment == "raw",
-        )
-    ).all()
+    current_prices = price_rows(
+        session, batch.id, trade_date=batch.trade_date, adjustment="raw"
+    )
     indicators = {
         (item.market, item.stock_code): item
-        for item in session.scalars(
-            select(DailyIndicator).where(
-                DailyIndicator.batch_id == batch.id,
-                DailyIndicator.trade_date == batch.trade_date,
-                DailyIndicator.rule_version == batch.rule_version,
-            )
+        for item in indicator_rows(
+            session,
+            batch.id,
+            trade_date=batch.trade_date,
+            rule_version=batch.rule_version,
         )
     }
     stocks = {(item.market, item.stock_code): item for item in session.scalars(select(StockBasic))}
@@ -37,17 +33,12 @@ def screen(session: Session, batch: DataBatch, criteria: dict[str, Any]) -> dict
         )
     ):
         signals[(item.market, item.stock_code)].add(item.rule_code)
-    listed_days = {
-        (market, code): count
-        for market, code, count in session.execute(
-            select(DailyPrice.market, DailyPrice.stock_code, func.count(DailyPrice.id))
-            .where(DailyPrice.batch_id == batch.id, DailyPrice.adjustment == "qfq")
-            .group_by(DailyPrice.market, DailyPrice.stock_code)
-        )
-    }
+    listed_days: dict[tuple[str, str], int] = defaultdict(int)
+    for item in price_rows(session, batch.id, adjustment="qfq"):
+        listed_days[(item.market, item.stock_code)] += 1
 
     results: list[dict[str, Any]] = []
-    for price in price_rows:
+    for price in current_prices:
         key = (price.market, price.stock_code)
         indicator = indicators.get(key)
         stock = stocks.get(key)

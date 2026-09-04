@@ -176,6 +176,33 @@ uv run python -m scripts.run_scheduler
 
 默认数据库为 `backend/stock_trading.db`，可通过 `DATABASE_URL` 指定其他 SQLite 路径。Docker 部署会自动运行调度器和备份服务。
 
+### 使用本机 Codex CLI 生成候选股 AI 评审
+
+后端可以继续运行在 Docker 中；AI 调用由 macOS 宿主机执行，因此无需把 Codex 登录凭据挂载进容器。确认本机已完成 `codex login` 后运行：
+
+```bash
+cd backend
+.venv/bin/python -m scripts.generate_ai_recommendations \
+  --api-base http://localhost:8080/api/v1
+```
+
+命令只读取当前激活批次最多 20 只候选股，以临时目录、只读沙箱和严格 JSON Schema 调用 `codex exec`，然后将结果导入后端。刷新行情看板即可查看“AI 评审”列。该操作会消耗当前 Codex 账号额度，但不会触发行情同步；Codex 失败时原有规则候选不受影响。
+
+分析最多 20 只自选股：
+
+```bash
+.venv/bin/python -m scripts.generate_ai_recommendations --scope watchlist
+```
+
+只分析一只已加入自选的股票：
+
+```bash
+.venv/bin/python -m scripts.generate_ai_recommendations \
+  --scope watchlist --market SH --stock-code 600000
+```
+
+自选股结果显示在自选列表的“AI 分析”列，并与默认策略候选的 AI 评审分别保存。每次分析使用当前激活日线批次，并携带已有的自选实时快照；不会主动刷新实时行情。
+
 ## 数据口径与限制
 
 - 指标分析只处理已收盘交易日的日线；实时报价仅在自选股页面手动按需刷新，不提供全市场或持续推送盘口。日线自动同步默认于上海时间交易日 18:30 运行。

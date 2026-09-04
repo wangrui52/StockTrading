@@ -19,9 +19,29 @@ const outcomeStatusLabels: Record<string, { label: string; tone: string }> = {
   UNAVAILABLE: { label: '数据缺失', tone: 'danger' },
 }
 
+const aiRecommendationLabels: Record<string, { label: string; tone: string }> = {
+  FOCUS: { label: '重点关注', tone: 'success' },
+  WATCH: { label: '继续观察', tone: 'warning' },
+  AVOID: { label: '暂时回避', tone: 'danger' },
+}
+
 function OutcomeStatus({ status }: { status?: string }) {
   const presentation = outcomeStatusLabels[status ?? ''] ?? { label: status || '状态未知', tone: 'warning' }
   return <span className={`status-tag ${presentation.tone}`.trim()}>{presentation.label}</span>
+}
+
+function AIRecommendation({ item }: { item: Dashboard['candidates'][number]['ai_recommendation'] }) {
+  if (!item) return <span className="muted">尚未生成</span>
+  const presentation = aiRecommendationLabels[item.recommendation] ?? {
+    label: item.recommendation,
+    tone: 'warning',
+  }
+  return <div className="ai-review">
+    <span className={`status-tag ${presentation.tone}`.trim()}>{presentation.label} · {item.ai_score}分</span>
+    <small>{item.reasons.join(' / ')}</small>
+    <small className="warning">风险：{item.risks.join(' / ')}</small>
+    <small className="muted">失效：{item.invalidation}</small>
+  </div>
 }
 
 function isStale(tradeDate: string) {
@@ -118,8 +138,9 @@ function DailyDashboard() {
         <span>批次 #{data.batch_id}</span>
         <span>规则 {data.rule_version}</span>
         <span>完整率 {(data.completeness_rate * 100).toFixed(1)}%</span>
+        <small className="muted">仅增量保存新增或修订行情</small>
         <button type="button" disabled={syncing} onClick={() => sync.mutate()}>
-          {syncing ? '同步中…' : '同步最新交易日'}
+          {syncing ? '同步中…' : '更新全市场策略数据'}
         </button>
       </section>
       {syncFeedback}
@@ -131,12 +152,12 @@ function DailyDashboard() {
         <article><span>下跌</span><strong className="fall">{data.market_summary.down}</strong></article>
         <article><span>平盘</span><strong>{data.market_summary.flat}</strong></article>
         <article><span>成交额</span><strong>{(data.market_summary.amount / 100000000).toFixed(1)} 亿</strong></article>
-      </section> : <section className="state-card"><strong>市场概览已隐藏</strong><p>当前批次完整率低于 99%，避免用不完整样本展示聚合统计。</p></section>}
+      </section> : <section className="state-card"><strong>市场概览已隐藏</strong><p>当前涨跌数据不完整，避免用缺失样本展示聚合统计。</p></section>}
       <section className="panel">
         <div className="panel-title"><div><p className="eyebrow">默认策略</p><h2>交易日候选股</h2></div><Link to="/screener">调整筛选</Link></div>
         {data.candidates.length === 0 ? <p className="muted">当前批次没有命中默认条件的股票。</p> : (
-          <div className="table-wrap"><table><thead><tr><th>股票</th><th>得分</th><th>命中原因</th><th>后续表现</th></tr></thead><tbody>
-            {data.candidates.map((item) => <tr key={`${item.market}${item.stock_code}`}><td><Link to={`/stocks/${item.market}/${item.stock_code}`}>{item.stock_code}</Link><small>{item.stock_name || '名称暂缺'} · {item.market}</small></td><td>{item.score.toFixed(1)}</td><td>{item.reasons.map((reason) => candidateReasonLabels.get(reason) ?? reason).join(' / ')}</td><td><OutcomeStatus status={item.outcome_status} /></td></tr>)}
+          <div className="table-wrap"><table><thead><tr><th>股票</th><th>规则分</th><th>命中原因</th><th>AI评审</th><th>后续表现</th></tr></thead><tbody>
+            {data.candidates.map((item) => <tr key={`${item.market}${item.stock_code}`}><td><Link to={`/stocks/${item.market}/${item.stock_code}`}>{item.stock_code}</Link><small>{item.stock_name || '名称暂缺'} · {item.market}</small></td><td>{item.score.toFixed(1)}</td><td>{item.reasons.map((reason) => candidateReasonLabels.get(reason) ?? reason).join(' / ')}</td><td><AIRecommendation item={item.ai_recommendation} /></td><td><OutcomeStatus status={item.outcome_status} /></td></tr>)}
           </tbody></table></div>
         )}
       </section>

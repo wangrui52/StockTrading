@@ -46,6 +46,19 @@ class SystemStatusResponse(BaseModel):
     latest_sync: SyncJobResponse | None
 
 
+class AIRecommendationItem(BaseModel):
+    recommendation: Literal["FOCUS", "WATCH", "AVOID"]
+    ai_score: int
+    horizon_trading_days: Literal[1, 3, 5]
+    reasons: list[str]
+    risks: list[str]
+    invalidation: str
+    confidence: float
+    provider: str
+    model: str
+    run_version: int
+
+
 class CandidateItem(BaseModel):
     market: str
     stock_code: str
@@ -55,9 +68,11 @@ class CandidateItem(BaseModel):
     close: float | None = None
     pct_change: float | None = None
     rsi14: float | None = None
+    volume_ratio: float | None = None
     outcome_status: Literal["PENDING", "PARTIAL", "COMPLETED", "UNAVAILABLE"] = (
         "PENDING"
     )
+    ai_recommendation: AIRecommendationItem | None = None
 
 
 class MarketSummary(BaseModel):
@@ -180,6 +195,7 @@ class WatchlistItemResponse(BaseModel):
     risk_level: str | None = None
     alert_status: str = "UNTRIGGERED"
     realtime: RealtimeQuoteResponse | None = None
+    ai_analysis: AIRecommendationItem | None = None
 
 
 class WatchlistResponse(BaseModel):

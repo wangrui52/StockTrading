@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ai-recommendations/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Ai Recommendations */
+        post: operations["import_ai_recommendations_api_v1_ai_recommendations_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/status": {
         parameters: {
             query?: never;
@@ -662,6 +679,97 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AIRecommendationImportRequest */
+        AIRecommendationImportRequest: {
+            /** Batch Id */
+            batch_id: number;
+            /**
+             * Scope
+             * @default candidate
+             * @enum {string}
+             */
+            scope: "candidate" | "watchlist";
+            /**
+             * Provider
+             * @constant
+             */
+            provider: "codex_cli";
+            /** Model */
+            model: string;
+            /** Prompt Version */
+            prompt_version: string;
+            /** Evidence Snapshot */
+            evidence_snapshot: {
+                [key: string]: unknown;
+            };
+            /** Items */
+            items: components["schemas"]["AIRecommendationItemImport"][];
+        };
+        /** AIRecommendationImportResponse */
+        AIRecommendationImportResponse: {
+            /** Batch Id */
+            batch_id: number;
+            /** Imported Count */
+            imported_count: number;
+            /** Run Id */
+            run_id: number;
+        };
+        /** AIRecommendationItem */
+        AIRecommendationItem: {
+            /**
+             * Recommendation
+             * @enum {string}
+             */
+            recommendation: "FOCUS" | "WATCH" | "AVOID";
+            /** Ai Score */
+            ai_score: number;
+            /**
+             * Horizon Trading Days
+             * @enum {integer}
+             */
+            horizon_trading_days: 1 | 3 | 5;
+            /** Reasons */
+            reasons: string[];
+            /** Risks */
+            risks: string[];
+            /** Invalidation */
+            invalidation: string;
+            /** Confidence */
+            confidence: number;
+            /** Provider */
+            provider: string;
+            /** Model */
+            model: string;
+            /** Run Version */
+            run_version: number;
+        };
+        /** AIRecommendationItemImport */
+        AIRecommendationItemImport: {
+            /** Market */
+            market: string;
+            /** Stock Code */
+            stock_code: string;
+            /**
+             * Recommendation
+             * @enum {string}
+             */
+            recommendation: "FOCUS" | "WATCH" | "AVOID";
+            /** Ai Score */
+            ai_score: number;
+            /**
+             * Horizon Trading Days
+             * @enum {integer}
+             */
+            horizon_trading_days: 1 | 3 | 5;
+            /** Reasons */
+            reasons: string[];
+            /** Risks */
+            risks: string[];
+            /** Invalidation */
+            invalidation: string;
+            /** Confidence */
+            confidence: number;
+        };
         /** AlertItem */
         AlertItem: {
             /** Id */
@@ -832,12 +940,15 @@ export interface components {
             pct_change?: number | null;
             /** Rsi14 */
             rsi14?: number | null;
+            /** Volume Ratio */
+            volume_ratio?: number | null;
             /**
              * Outcome Status
              * @default PENDING
              * @enum {string}
              */
             outcome_status: "PENDING" | "PARTIAL" | "COMPLETED" | "UNAVAILABLE";
+            ai_recommendation?: components["schemas"]["AIRecommendationItem"] | null;
         };
         /** CandidateOutcomes */
         CandidateOutcomes: {
@@ -1744,6 +1855,7 @@ export interface components {
              */
             alert_status: string;
             realtime?: components["schemas"]["RealtimeQuoteResponse"] | null;
+            ai_analysis?: components["schemas"]["AIRecommendationItem"] | null;
         };
         /** WatchlistRequest */
         WatchlistRequest: {
@@ -1784,6 +1896,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    import_ai_recommendations_api_v1_ai_recommendations_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIRecommendationImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIRecommendationImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -23,6 +23,44 @@
         }
       }
     },
+    "/api/v1/ai-recommendations/import": {
+      "post": {
+        "summary": "Import Ai Recommendations",
+        "operationId": "import_ai_recommendations_api_v1_ai_recommendations_import_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AIRecommendationImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIRecommendationImportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/system/status": {
       "get": {
         "summary": "System Status",
@@ -1980,6 +2018,244 @@
   },
   "components": {
     "schemas": {
+      "AIRecommendationImportRequest": {
+        "properties": {
+          "batch_id": {
+            "type": "integer",
+            "title": "Batch Id"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "candidate",
+              "watchlist"
+            ],
+            "title": "Scope",
+            "default": "candidate"
+          },
+          "provider": {
+            "type": "string",
+            "const": "codex_cli",
+            "title": "Provider"
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Model"
+          },
+          "prompt_version": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Prompt Version"
+          },
+          "evidence_snapshot": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Evidence Snapshot"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AIRecommendationItemImport"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "batch_id",
+          "provider",
+          "model",
+          "prompt_version",
+          "evidence_snapshot",
+          "items"
+        ],
+        "title": "AIRecommendationImportRequest"
+      },
+      "AIRecommendationImportResponse": {
+        "properties": {
+          "batch_id": {
+            "type": "integer",
+            "title": "Batch Id"
+          },
+          "imported_count": {
+            "type": "integer",
+            "title": "Imported Count"
+          },
+          "run_id": {
+            "type": "integer",
+            "title": "Run Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "batch_id",
+          "imported_count",
+          "run_id"
+        ],
+        "title": "AIRecommendationImportResponse"
+      },
+      "AIRecommendationItem": {
+        "properties": {
+          "recommendation": {
+            "type": "string",
+            "enum": [
+              "FOCUS",
+              "WATCH",
+              "AVOID"
+            ],
+            "title": "Recommendation"
+          },
+          "ai_score": {
+            "type": "integer",
+            "title": "Ai Score"
+          },
+          "horizon_trading_days": {
+            "type": "integer",
+            "enum": [
+              1,
+              3,
+              5
+            ],
+            "title": "Horizon Trading Days"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reasons"
+          },
+          "risks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Risks"
+          },
+          "invalidation": {
+            "type": "string",
+            "title": "Invalidation"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "run_version": {
+            "type": "integer",
+            "title": "Run Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "recommendation",
+          "ai_score",
+          "horizon_trading_days",
+          "reasons",
+          "risks",
+          "invalidation",
+          "confidence",
+          "provider",
+          "model",
+          "run_version"
+        ],
+        "title": "AIRecommendationItem"
+      },
+      "AIRecommendationItemImport": {
+        "properties": {
+          "market": {
+            "type": "string",
+            "maxLength": 8,
+            "minLength": 1,
+            "title": "Market"
+          },
+          "stock_code": {
+            "type": "string",
+            "maxLength": 16,
+            "minLength": 1,
+            "title": "Stock Code"
+          },
+          "recommendation": {
+            "type": "string",
+            "enum": [
+              "FOCUS",
+              "WATCH",
+              "AVOID"
+            ],
+            "title": "Recommendation"
+          },
+          "ai_score": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Ai Score"
+          },
+          "horizon_trading_days": {
+            "type": "integer",
+            "enum": [
+              1,
+              3,
+              5
+            ],
+            "title": "Horizon Trading Days"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Reasons"
+          },
+          "risks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Risks"
+          },
+          "invalidation": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Invalidation"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "market",
+          "stock_code",
+          "recommendation",
+          "ai_score",
+          "horizon_trading_days",
+          "reasons",
+          "risks",
+          "invalidation",
+          "confidence"
+        ],
+        "title": "AIRecommendationItemImport"
+      },
       "AlertItem": {
         "properties": {
           "id": {
@@ -2367,6 +2643,17 @@
             ],
             "title": "Rsi14"
           },
+          "volume_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume Ratio"
+          },
           "outcome_status": {
             "type": "string",
             "enum": [
@@ -2377,6 +2664,16 @@
             ],
             "title": "Outcome Status",
             "default": "PENDING"
+          },
+          "ai_recommendation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AIRecommendationItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -4958,6 +5255,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/RealtimeQuoteResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ai_analysis": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AIRecommendationItem"
               },
               {
                 "type": "null"

@@ -8,6 +8,7 @@ from sqlalchemy import insert, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.sqlalchemy_repositories import SQLAlchemyBatchStore, SQLAlchemySignalStore
+from app.application.batch_snapshot import batch_lineage_ids, price_rows
 from app.domain.candidates import CandidateEngine
 from app.domain.indicators import IndicatorEngine
 from app.domain.market import MarketBar
@@ -19,6 +20,7 @@ from app.infrastructure.models import (
     DailyPrice,
     DataBatch,
     IndexDaily,
+    MarketBreadthSnapshot,
     StockBasic,
     SyncJob,
     TradeCalendar,
@@ -149,6 +151,14 @@ class SyncPipeline:
                 raise NonTradingDayError(f"{target_trade_date} is not a trading day")
 
             batch = DataBatch(
+                parent_batch_id=session.scalar(
+                    select(DataBatch.id)
+                    .where(
+                        DataBatch.is_active.is_(True),
+                        DataBatch.source == self.gateway.adapter_version,
+                    )
+                    .order_by(DataBatch.id.desc())
+                ),
                 source=self.gateway.adapter_version,
                 trade_date=target_trade_date,
                 status="BUILDING",
@@ -194,14 +204,11 @@ class SyncPipeline:
         target_trade_date: date,
     ) -> SyncResult:
         stocks = self.gateway.list_stocks()
-        previous_batch = session.scalar(
-            select(DataBatch).where(
-                DataBatch.is_active.is_(True),
-                DataBatch.id != batch.id,
-                DataBatch.source == self.gateway.adapter_version,
-            )
+        previous_batch = (
+            session.get(DataBatch, batch.parent_batch_id) if batch.parent_batch_id else None
         )
         if previous_batch and not 0 < (target_trade_date - previous_batch.trade_date).days <= 10:
+            batch.parent_batch_id = None
             previous_batch = None
         incremental_start = target_trade_date - timedelta(days=10) if previous_batch else None
         calendar_start: date | None = None
@@ -218,7 +225,7 @@ class SyncPipeline:
             set(
                 session.execute(
                     select(DailyPrice.market, DailyPrice.stock_code)
-                    .where(DailyPrice.batch_id == previous_batch.id)
+                    .where(DailyPrice.batch_id.in_(batch_lineage_ids(session, previous_batch.id)))
                     .distinct()
                 ).all()
             )
@@ -273,7 +280,16 @@ class SyncPipeline:
                     failures.append(source_stock.stock_code)
                 else:
                     job.status = job.stage = "CALCULATING"
-                    self._persist_prices(session, batch.id, records)
+                    previous_records = (
+                        self._snapshot_records(session, previous_batch, source_stock)
+                        if previous_batch
+                        else []
+                    )
+                    self._persist_prices(
+                        session,
+                        batch.id,
+                        self._price_deltas(previous_records, records),
+                    )
                     record_start = min(item.trade_date for item in records)
                     calendar_start = (
                         record_start
@@ -326,6 +342,8 @@ class SyncPipeline:
         except MarketDataUnavailable:
             pass
 
+        self._persist_market_breadth(session, batch)
+
         job.status = job.stage = "GENERATING_SIGNALS"
         batch.status = "READY"
         SQLAlchemyBatchStore(session).activate_ready_batch(batch.id)
@@ -342,6 +360,45 @@ class SyncPipeline:
                     type(error).__name__,
                 )
         return SyncResult(job_id=job.id, batch_id=batch.id)
+
+    @staticmethod
+    def _persist_market_breadth(session: Session, batch: DataBatch) -> None:
+        rows = price_rows(
+            session, batch.id, trade_date=batch.trade_date, adjustment="raw"
+        )
+        if not rows:
+            rows = price_rows(
+                session, batch.id, trade_date=batch.trade_date, adjustment="qfq"
+            )
+        known_changes = sum(item.pct_change is not None for item in rows)
+        is_complete = bool(rows) and known_changes / len(rows) >= 0.99
+        existing = session.scalar(
+            select(MarketBreadthSnapshot).where(
+                MarketBreadthSnapshot.source == batch.source,
+                MarketBreadthSnapshot.trade_date == batch.trade_date,
+                MarketBreadthSnapshot.scope == "ALL",
+            )
+        )
+        values = {
+            "up_count": sum(item.pct_change is not None and item.pct_change > 0 for item in rows),
+            "down_count": sum(item.pct_change is not None and item.pct_change < 0 for item in rows),
+            "flat_count": sum(item.pct_change == 0 for item in rows),
+            "amount": sum(item.amount for item in rows),
+            "is_complete": is_complete,
+            "fetched_at": datetime.now(UTC),
+        }
+        if existing is None:
+            session.add(
+                MarketBreadthSnapshot(
+                    source=batch.source,
+                    trade_date=batch.trade_date,
+                    scope="ALL",
+                    **values,
+                )
+            )
+        else:
+            for key, value in values.items():
+                setattr(existing, key, value)
 
     def _persist_trade_calendar(
         self,
@@ -478,12 +535,11 @@ class SyncPipeline:
                     adjustment=item.adjustment,
                     is_suspended=item.is_suspended,
                 )
-                for item in session.scalars(
-                    select(DailyPrice).where(
-                        DailyPrice.batch_id == previous_batch.id,
-                        DailyPrice.market == stock.market,
-                        DailyPrice.stock_code == stock.stock_code,
-                    )
+                for item in price_rows(
+                    session,
+                    previous_batch.id,
+                    market=stock.market,
+                    stock_code=stock.stock_code,
                 )
             ]
         previous_values = {(item.trade_date, item.adjustment): item for item in previous}
@@ -510,15 +566,14 @@ class SyncPipeline:
             return False
         previous = {
             item.trade_date: item
-            for item in session.scalars(
-                select(DailyPrice).where(
-                    DailyPrice.batch_id == previous_batch.id,
-                    DailyPrice.market == stock.market,
-                    DailyPrice.stock_code == stock.stock_code,
-                    DailyPrice.adjustment == "qfq",
-                    DailyPrice.trade_date.in_(fetched_qfq),
-                )
+            for item in price_rows(
+                session,
+                previous_batch.id,
+                market=stock.market,
+                stock_code=stock.stock_code,
+                adjustment="qfq",
             )
+            if item.trade_date in fetched_qfq
         }
         for trade_date, current in fetched_qfq.items():
             prior = previous.get(trade_date)
@@ -536,6 +591,8 @@ class SyncPipeline:
 
     @staticmethod
     def _persist_prices(session: Session, batch_id: int, records: list[PriceRecord]) -> None:
+        if not records:
+            return
         session.execute(
             insert(DailyPrice),
             [
@@ -558,6 +615,45 @@ class SyncPipeline:
                 for item in records
             ],
         )
+
+    @staticmethod
+    def _snapshot_records(
+        session: Session, batch: DataBatch, stock: StockRecord
+    ) -> list[PriceRecord]:
+        return [
+            PriceRecord(
+                market=item.market,
+                stock_code=item.stock_code,
+                trade_date=item.trade_date,
+                open=item.open,
+                high=item.high,
+                low=item.low,
+                close=item.close,
+                volume=item.volume,
+                amount=item.amount,
+                pct_change=item.pct_change,
+                turnover_rate=item.turnover_rate,
+                adjustment=item.adjustment,
+                is_suspended=item.is_suspended,
+            )
+            for item in price_rows(
+                session,
+                batch.id,
+                market=stock.market,
+                stock_code=stock.stock_code,
+            )
+        ]
+
+    @staticmethod
+    def _price_deltas(
+        previous: list[PriceRecord], current: list[PriceRecord]
+    ) -> list[PriceRecord]:
+        prior = {(item.trade_date, item.adjustment): item for item in previous}
+        return [
+            item
+            for item in current
+            if prior.get((item.trade_date, item.adjustment)) != item
+        ]
 
     def _calculate_stock(
         self,
@@ -583,6 +679,8 @@ class SyncPipeline:
         evaluations = self.signals.evaluate(bars, snapshots, self.rule_version)
         indicator_rows = []
         for snapshot in snapshots:
+            if snapshot.trade_date != batch.trade_date:
+                continue
             values = asdict(snapshot)
             values.pop("trade_date")
             values["unavailable"] = sorted(values["unavailable"])
@@ -600,6 +698,8 @@ class SyncPipeline:
             session.execute(insert(DailyIndicator), indicator_rows)
         signal_store = SQLAlchemySignalStore(session)
         for evaluation in evaluations:
+            if evaluation.trade_date != batch.trade_date:
+                continue
             for rule_code in sorted(evaluation.event_codes):
                 signal_store.record_signal(
                     batch_id=batch.id,

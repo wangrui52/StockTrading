@@ -77,7 +77,16 @@ def test_alembic_upgrade_creates_core_tables(tmp_path: Path) -> None:
         "realtime_snapshot",
         "candidate_outcome",
         "outcome_run",
+        "ai_recommendation_run",
+        "ai_recommendation",
     } <= tables
+
+    engine = create_engine(f"sqlite+pysqlite:///{database_path}")
+    run_columns = {
+        column["name"]: column for column in inspect(engine).get_columns("ai_recommendation_run")
+    }
+    engine.dispose()
+    assert run_columns["scope"]["nullable"] is False
 
 
 def test_candidate_outcome_migration_has_required_schema(tmp_path: Path) -> None:
